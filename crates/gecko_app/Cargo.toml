@@ -1,0 +1,16 @@
+[package]
+name = "gecko_app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+tracy = ["gecko_core/tracy"]
+
+[dependencies]
+gecko_core = { workspace = true }
+anyhow.workspace = true
+tracing = { workspace = true }
+
+[lints]
+workspace = true

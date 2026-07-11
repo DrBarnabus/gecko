@@ -1,0 +1,17 @@
+[package]
+name = "gecko_core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+tracy = ["dep:tracing-tracy"]
+
+[dependencies]
+glam.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-tracy = { workspace = true, optional = true }
+
+[lints]
+workspace = true
