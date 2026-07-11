@@ -13,6 +13,9 @@ build-release:
 run:
     cargo run --bin gecko_app
 
+run-release:
+    cargo run --bin gecko_app --release
+
 format *args:
     cargo +nightly fmt {{args}}
 

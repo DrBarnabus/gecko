@@ -9,13 +9,16 @@ rust-version = "1.96"
 
 [workspace.dependencies]
 gecko_core = { path = "crates/gecko_core" }
+gecko_renderer = { path = "crates/gecko_renderer" }
 
 anyhow = "1.0.103"
-winit = "0.30.13"
 glam = "0.33.2"
+pollster = "1.0.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-tracy = "0.11.4"
+wgpu = "30.0.0"
+winit = "0.30.13"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
