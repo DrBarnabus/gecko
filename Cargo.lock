@@ -341,6 +341,63 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
+name = "dear-imgui-build-support"
+version = "0.16.0"
+source = "git+https://github.com/Latias94/dear-imgui-rs?rev=f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3#f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "dear-imgui-rs"
+version = "0.16.0"
+source = "git+https://github.com/Latias94/dear-imgui-rs?rev=f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3#f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3"
+dependencies = [
+ "bitflags 2.13.0",
+ "cfg-if",
+ "dear-imgui-sys",
+ "mint",
+ "parking_lot",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "dear-imgui-sys"
+version = "0.16.0"
+source = "git+https://github.com/Latias94/dear-imgui-rs?rev=f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3#f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "dear-imgui-build-support",
+ "mint",
+]
+
+[[package]]
+name = "dear-imgui-wgpu"
+version = "0.16.0"
+source = "git+https://github.com/Latias94/dear-imgui-rs?rev=f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3#f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3"
+dependencies = [
+ "bytemuck",
+ "dear-imgui-rs",
+ "thiserror 2.0.18",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "dear-imgui-winit"
+version = "0.16.0"
+source = "git+https://github.com/Latias94/dear-imgui-rs?rev=f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3#f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3"
+dependencies = [
+ "dear-imgui-rs",
+ "web-sys",
+ "web-time",
+ "winit",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -471,6 +528,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gecko_core",
+ "gecko_editor",
  "gecko_renderer",
  "tracing",
  "wgpu",
@@ -485,6 +543,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-tracy",
+]
+
+[[package]]
+name = "gecko_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dear-imgui-rs",
+ "dear-imgui-wgpu",
+ "dear-imgui-winit",
+ "gecko_core",
+ "gecko_renderer",
+ "tracing",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -850,6 +923,12 @@ checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "mint"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
 
 [[package]]
 name = "naga"

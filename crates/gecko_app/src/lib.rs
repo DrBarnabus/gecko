@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
+use gecko_editor::Editor;
 use gecko_renderer::gpu::{Frame, Gpu};
 use winit::{
     application::ApplicationHandler,
@@ -13,6 +14,8 @@ use winit::{
 struct EngineState {
     window: Arc<Window>,
     gpu: Gpu,
+    editor: Editor,
+
     last_frame: Instant,
     fps_accumulator: f32,
     fps_frame_count: u32,
@@ -31,11 +34,15 @@ impl EngineState {
         let PhysicalSize { width, height } = window.inner_size();
         let gpu = Gpu::new(window.clone(), width, height)?;
 
+        let editor = Editor::new(&gpu, &window)?;
+
         tracing::info!(adapter = %gpu.adapter.get_info().name, backend = ?gpu.adapter.get_info().backend, width, height, "initialized");
 
         Ok(Self {
             window,
             gpu,
+            editor,
+
             last_frame: Instant::now(),
             fps_accumulator: 0.0,
             fps_frame_count: 0,
@@ -73,11 +80,37 @@ impl EngineState {
             label: Some("frame_encoder"),
         });
 
-        {
-            let _span = tracing::debug_span!("game_pass").entered();
+        // {
+        //     let _span = tracing::debug_span!("game_pass").entered();
 
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ui_pass"),
+        //     let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        //         label: Some("ui_pass"),
+        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+        //             view: &view,
+        //             resolve_target: None,
+        //             ops: wgpu::Operations {
+        //                 load: wgpu::LoadOp::Clear(wgpu::Color {
+        //                     r: 0.06,
+        //                     g: 0.07,
+        //                     b: 0.09,
+        //                     a: 1.0,
+        //                 }),
+        //                 store: wgpu::StoreOp::Store,
+        //             },
+        //             depth_slice: None,
+        //         })],
+        //         depth_stencil_attachment: None,
+        //         timestamp_writes: None,
+        //         occlusion_query_set: None,
+        //         multiview_mask: None,
+        //     });
+        // }
+
+        {
+            let _span = tracing::debug_span!("editor_ui_pass").entered();
+
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("editor_ui_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -97,6 +130,13 @@ impl EngineState {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+
+            self.editor.render(
+                &self.window,
+                &mut render_pass,
+                self.gpu.surface_config.width,
+                self.gpu.surface_config.height,
+            )?;
         }
 
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -137,6 +177,8 @@ impl ApplicationHandler for App {
         let Some(state) = self.state.as_mut() else { return };
         let is_main_window = window_id == state.window.id();
 
+        state.editor.handle_window_event(&state.window, &event);
+
         match event {
             WindowEvent::CloseRequested if is_main_window => event_loop.exit(),
             WindowEvent::Resized(size) if is_main_window => state.gpu.resize(size.width, size.height),
@@ -147,6 +189,11 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested if is_main_window => {
                 if let Err(e) = state.redraw() {
                     tracing::error!(error = ?e, "failed to redraw");
+                }
+
+                if state.editor.wants_quit() {
+                    event_loop.exit();
+                    return;
                 }
 
                 state.window.request_redraw();
