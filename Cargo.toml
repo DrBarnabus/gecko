@@ -11,6 +11,7 @@ rust-version = "1.96"
 gecko_core = { path = "crates/gecko_core" }
 
 anyhow = "1.0.103"
+winit = "0.30.13"
 glam = "0.33.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
