@@ -146,6 +146,8 @@ impl EngineState {
             self.gpu.surface.configure(&self.gpu.device, &self.gpu.surface_config);
         }
 
+        self.editor.update_platform_windows();
+
         Ok(())
     }
 }
@@ -160,6 +162,11 @@ impl ApplicationHandler for App {
             Ok(state) => {
                 state.window.request_redraw();
                 self.state = Some(state);
+
+                #[cfg(feature = "multi-viewport")]
+                if let Some(state) = self.state.as_mut() {
+                    state.editor.install_viewport_callbacks().unwrap();
+                }
             }
             Err(e) => {
                 tracing::error!(error = ?e, "failed to initialise");
@@ -177,7 +184,7 @@ impl ApplicationHandler for App {
         let Some(state) = self.state.as_mut() else { return };
         let is_main_window = window_id == state.window.id();
 
-        state.editor.handle_window_event(&state.window, &event);
+        state.editor.handle_window_event(&state.window, window_id, &event);
 
         match event {
             WindowEvent::CloseRequested if is_main_window => event_loop.exit(),
@@ -187,6 +194,9 @@ impl ApplicationHandler for App {
                 state.gpu.resize(width, height);
             }
             WindowEvent::RedrawRequested if is_main_window => {
+                #[cfg(feature = "multi-viewport")]
+                let _event_loop_guard = gecko_editor::set_event_loop_for_frame(event_loop);
+
                 if let Err(e) = state.redraw() {
                     tracing::error!(error = ?e, "failed to redraw");
                 }
@@ -205,7 +215,11 @@ impl ApplicationHandler for App {
 
 pub fn run() -> Result<()> {
     gecko_core::diagnostics::init();
-    tracing::info!(tracy = cfg!(feature = "tracy"), "initializing...");
+    tracing::info!(
+        multi_viewport = cfg!(feature = "multi-viewport"),
+        tracy = cfg!(feature = "tracy"),
+        "initializing..."
+    );
 
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);

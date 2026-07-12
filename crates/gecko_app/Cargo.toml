@@ -5,17 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 
 [features]
+default = ["multi-viewport"]
+multi-viewport = ["gecko_editor/multi-viewport"]
 tracy = ["gecko_core/tracy"]
 
 [dependencies]
-gecko_core = { workspace = true }
-gecko_editor = { workspace = true }
-gecko_renderer = { workspace = true }
-
-anyhow = { workspace = true }
-tracing = { workspace = true }
-wgpu = { workspace = true }
-winit = { workspace = true }
+anyhow.workspace = true
+gecko_core.workspace = true
+gecko_editor.workspace = true
+gecko_renderer.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
+winit.workspace = true
 
 [lints]
 workspace = true

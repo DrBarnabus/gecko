@@ -4,16 +4,23 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+multi-viewport = [
+    "dear-imgui-rs/multi-viewport",
+    "dear-imgui-wgpu/multi-viewport-winit",
+    "dear-imgui-winit/multi-viewport",
+]
+
 [dependencies]
 anyhow.workspace = true
-dear-imgui-rs = { workspace = true }
-dear-imgui-wgpu = { workspace = true }
-dear-imgui-winit = { workspace = true }
-gecko_core = { workspace = true }
-gecko_renderer = { workspace = true }
-tracing = { workspace = true }
-wgpu = { workspace = true }
-winit = { workspace = true }
+dear-imgui-rs.workspace = true
+dear-imgui-wgpu.workspace = true
+dear-imgui-winit.workspace = true
+gecko_core.workspace = true
+gecko_renderer.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
+winit.workspace = true
 
 [lints]
 workspace = true

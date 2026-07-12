@@ -6,9 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-pollster = { workspace = true }
-tracing = { workspace = true }
-wgpu = { workspace = true }
+pollster.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
 
 [lints]
 workspace = true
