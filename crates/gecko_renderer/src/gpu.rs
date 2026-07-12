@@ -42,7 +42,7 @@ impl Gpu {
             color_space: wgpu::SurfaceColorSpace::Auto,
             width: width.max(1),
             height: height.max(1),
-            present_mode: wgpu::PresentMode::AutoNoVsync,
+            present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -69,6 +69,7 @@ impl Gpu {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn acquire_frame(&mut self) -> Result<Frame> {
         Ok(match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame) => Frame::Ready(frame, false),

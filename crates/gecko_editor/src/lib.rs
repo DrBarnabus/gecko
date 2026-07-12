@@ -176,6 +176,7 @@ impl Editor {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn update_platform_windows(&mut self) {
         #[cfg(feature = "multi-viewport")]
         if self.viewports_enabled {

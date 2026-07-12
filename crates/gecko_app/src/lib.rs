@@ -140,11 +140,18 @@ impl EngineState {
             )?;
         }
 
-        self.gpu.queue.submit(Some(encoder.finish()));
-        self.gpu.queue.present(frame);
+        {
+            let _span = tracing::debug_span!("queue_submit").entered();
+            self.gpu.queue.submit(Some(encoder.finish()));
+        }
 
-        if reconfigure_after_present {
-            self.gpu.surface.configure(&self.gpu.device, &self.gpu.surface_config);
+        {
+            let _span = tracing::debug_span!("queue_present").entered();
+            self.gpu.queue.present(frame);
+
+            if reconfigure_after_present {
+                self.gpu.surface.configure(&self.gpu.device, &self.gpu.surface_config);
+            }
         }
 
         self.editor.update_platform_windows();
