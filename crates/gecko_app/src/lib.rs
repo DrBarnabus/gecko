@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
+use gecko_core::diagnostics::LogBuffer;
 use gecko_editor::Editor;
 use gecko_renderer::gpu::{Frame, Gpu};
 use winit::{
@@ -22,7 +23,7 @@ struct EngineState {
 }
 
 impl EngineState {
-    fn new(event_loop: &ActiveEventLoop) -> Result<Self> {
+    fn new(event_loop: &ActiveEventLoop, log_buffer: Arc<LogBuffer>) -> Result<Self> {
         let window: Arc<Window> = Arc::new(
             event_loop.create_window(
                 Window::default_attributes()
@@ -34,7 +35,7 @@ impl EngineState {
         let PhysicalSize { width, height } = window.inner_size();
         let gpu = Gpu::new(window.clone(), width, height)?;
 
-        let editor = Editor::new(&gpu, &window)?;
+        let editor = Editor::new(&gpu, &window, log_buffer)?;
 
         tracing::info!(adapter = %gpu.adapter.get_info().name, backend = ?gpu.adapter.get_info().backend, width, height, "initialized");
 
@@ -63,7 +64,7 @@ impl EngineState {
             let fps = self.fps_frame_count as f32 / self.fps_accumulator;
             let frame_time_ms = self.fps_accumulator * 1000.0 / self.fps_frame_count as f32;
 
-            tracing::info!(fps, frame_time_ms);
+            tracing::info!(fps = format!("{fps:.1}"), frame_time_ms = format!("{frame_time_ms:.2}"));
 
             self.fps_accumulator = 0.0;
             self.fps_frame_count = 0;
@@ -154,11 +155,12 @@ impl EngineState {
 
 struct App {
     state: Option<EngineState>,
+    log_buffer: Arc<LogBuffer>,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        match EngineState::new(event_loop) {
+        match EngineState::new(event_loop, self.log_buffer.clone()) {
             Ok(state) => {
                 state.window.request_redraw();
                 self.state = Some(state);
@@ -214,7 +216,7 @@ impl ApplicationHandler for App {
 }
 
 pub fn run() -> Result<()> {
-    gecko_core::diagnostics::init();
+    let log_buffer = gecko_core::diagnostics::init();
     tracing::info!(
         multi_viewport = cfg!(feature = "multi-viewport"),
         tracy = cfg!(feature = "tracy"),
@@ -224,7 +226,10 @@ pub fn run() -> Result<()> {
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App { state: None };
+    let mut app = App {
+        state: None,
+        log_buffer,
+    };
     event_loop.run_app(&mut app)?;
 
     Ok(())

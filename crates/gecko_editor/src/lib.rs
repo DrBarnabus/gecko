@@ -1,3 +1,5 @@
+pub mod ui;
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,6 +9,7 @@ use dear_imgui_rs::{
 };
 use dear_imgui_wgpu::{GammaMode, WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
+use gecko_core::diagnostics::LogBuffer;
 use gecko_renderer::gpu::Gpu;
 use winit::{
     event::WindowEvent,
@@ -19,11 +22,15 @@ use dear_imgui_winit::multi_viewport as winit_mvp;
 #[cfg(feature = "multi-viewport")]
 pub use winit_mvp::set_event_loop_for_frame;
 
+use crate::ui::console::Console;
+
 pub struct Editor {
     pub imgui: Context,
     platform: WinitPlatform,
     pub renderer: WgpuRenderer,
     viewports_enabled: bool,
+
+    console: Console,
 
     quit_requested: bool,
 }
@@ -38,7 +45,7 @@ impl Drop for Editor {
 }
 
 impl Editor {
-    pub fn new(gpu: &Gpu, window: &Arc<Window>) -> Result<Self> {
+    pub fn new(gpu: &Gpu, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
         let viewports_enabled = cfg!(feature = "multi-viewport")
             && cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
 
@@ -72,6 +79,8 @@ impl Editor {
             platform,
             renderer,
             viewports_enabled,
+
+            console: Console::new(log_buffer),
 
             quit_requested: false,
         };
@@ -115,6 +124,7 @@ impl Editor {
         self.quit_requested
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn render(
         &mut self,
         window: &Window,
@@ -144,7 +154,8 @@ impl Editor {
 
         ui.window("Hierarchy").build(|| ui.text("Hierarchy"));
         ui.window("Inspector").build(|| ui.text("Inspector"));
-        ui.window("Console").build(|| ui.text("Console"));
+
+        let copy_request = self.console.render(ui);
 
         let game_class = WindowClass::default().dock_node_flags_override_set(DockNodeFlags::AUTO_HIDE_TAB_BAR);
         ui.set_next_window_class(&game_class);
@@ -157,6 +168,10 @@ impl Editor {
             framebuffer_width,
             framebuffer_height,
         )?;
+
+        if let Some(text) = copy_request {
+            self.imgui.set_clipboard_text(text);
+        }
 
         Ok(())
     }
