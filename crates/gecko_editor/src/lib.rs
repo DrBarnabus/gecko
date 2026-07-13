@@ -74,6 +74,8 @@ impl Editor {
         let mut renderer = WgpuRenderer::new(init_info, &mut imgui)?;
         renderer.set_gamma_mode(GammaMode::Auto);
 
+        ui::theme::set_style(&mut imgui, viewports_enabled);
+
         let mut editor = Self {
             imgui,
             platform,
