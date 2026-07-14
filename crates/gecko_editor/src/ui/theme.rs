@@ -1,4 +1,4 @@
-use dear_imgui_rs::{Context, StyleColor};
+use dear_imgui_rs::{Context, Direction, StyleColor, TreeLineMode};
 
 const ZINC_950: [f32; 3] = [0.035, 0.035, 0.043];
 const ZINC_900: [f32; 3] = [0.094, 0.094, 0.106];
@@ -23,24 +23,36 @@ fn alpha(c: [f32; 3], a: f32) -> [f32; 4] {
     [c[0], c[1], c[2], a]
 }
 
-pub fn set_style(imgui: &mut Context, viewports_enabled: bool) {
+pub fn set_style(imgui: &mut Context) {
     let style = imgui.style_mut();
 
-    style.set_window_rounding(if viewports_enabled { 0.0 } else { 6.0 });
-    style.set_child_rounding(6.0);
-    style.set_frame_rounding(4.0);
-    style.set_popup_rounding(6.0);
-    style.set_grab_rounding(3.0);
-    style.set_tab_rounding(4.0);
-    style.set_scrollbar_rounding(4.0);
+    style.set_window_rounding(0.0);
+    style.set_child_rounding(0.0);
+    style.set_frame_rounding(2.0);
+    style.set_popup_rounding(0.0);
+    style.set_grab_rounding(2.0);
+    style.set_tab_rounding(2.0);
+    style.set_scrollbar_rounding(0.0);
 
     style.set_window_border_size(1.0);
+    style.set_child_border_size(0.0);
+    style.set_popup_border_size(1.0);
     style.set_frame_border_size(0.0);
+    style.set_window_title_align([0.0, 0.5]);
+    style.set_window_menu_button_position(Direction::None);
+    style.set_separator_text_align([0.0, 0.5]);
     style.set_window_padding([10.0, 10.0]);
     style.set_frame_padding([8.0, 4.0]);
     style.set_item_spacing([8.0, 6.0]);
+    style.set_item_inner_spacing([6.0, 4.0]);
+    style.set_indent_spacing(24.0);
+    style.set_cell_padding([6.0, 4.0]);
+    style.set_disabled_alpha(0.50);
     style.set_scrollbar_size(12.0);
     style.set_grab_min_size(10.0);
+    style.set_tab_bar_overline_size(2.0);
+    style.set_tree_lines_mode(TreeLineMode::TO_NODES);
+    style.set_tree_lines_size(1.0);
 
     style.set_color(StyleColor::Text, opaque(ZINC_100));
     style.set_color(StyleColor::TextDisabled, opaque(ZINC_500));

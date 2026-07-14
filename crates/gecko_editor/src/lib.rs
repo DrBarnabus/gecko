@@ -67,6 +67,8 @@ impl Editor {
         let mut platform = WinitPlatform::new(&mut imgui);
         platform.attach_window(window, HiDpiMode::Default, &mut imgui);
 
+        ui::fonts::load_fonts(&mut imgui);
+
         let init_info = WgpuInitInfo::new(gpu.device.clone(), gpu.queue.clone(), gpu.surface_config.format)
             .with_instance(gpu.instance.clone())
             .with_adapter(gpu.adapter.clone());
@@ -74,7 +76,7 @@ impl Editor {
         let mut renderer = WgpuRenderer::new(init_info, &mut imgui)?;
         renderer.set_gamma_mode(GammaMode::Auto);
 
-        ui::theme::set_style(&mut imgui, viewports_enabled);
+        ui::theme::set_style(&mut imgui);
 
         let mut editor = Self {
             imgui,
