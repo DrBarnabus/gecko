@@ -1,4 +1,4 @@
-use dear_imgui_rs::{Context, Direction, StyleColor, TreeLineMode};
+use dear_imgui_rs::{Context, StyleColor, TreeLineMode};
 
 const ZINC_950: [f32; 3] = [0.035, 0.035, 0.043];
 const ZINC_900: [f32; 3] = [0.094, 0.094, 0.106];
@@ -39,7 +39,6 @@ pub fn set_style(imgui: &mut Context) {
     style.set_popup_border_size(1.0);
     style.set_frame_border_size(0.0);
     style.set_window_title_align([0.0, 0.5]);
-    style.set_window_menu_button_position(Direction::None);
     style.set_separator_text_align([0.0, 0.5]);
     style.set_window_padding([10.0, 10.0]);
     style.set_frame_padding([8.0, 4.0]);

@@ -1,11 +1,12 @@
 pub mod ui;
+pub mod viewport;
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use dear_imgui_rs::{
-    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, Ui,
-    WindowClass,
+    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, StyleVar,
+    Ui, WindowClass,
 };
 use dear_imgui_wgpu::{GammaMode, WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
@@ -22,7 +23,7 @@ use dear_imgui_winit::multi_viewport as winit_mvp;
 #[cfg(feature = "multi-viewport")]
 pub use winit_mvp::set_event_loop_for_frame;
 
-use crate::ui::console::Console;
+use crate::{ui::console::Console, viewport::Viewport};
 
 pub struct Editor {
     pub imgui: Context,
@@ -30,7 +31,8 @@ pub struct Editor {
     pub renderer: WgpuRenderer,
     viewports_enabled: bool,
 
-    console: Console,
+    pub console: Console,
+    pub viewport: Viewport,
 
     quit_requested: bool,
 }
@@ -78,6 +80,8 @@ impl Editor {
 
         ui::theme::set_style(&mut imgui);
 
+        let viewport = Viewport::new(&gpu.device, &mut renderer, gpu.surface_config.format);
+
         let mut editor = Self {
             imgui,
             platform,
@@ -85,6 +89,7 @@ impl Editor {
             viewports_enabled,
 
             console: Console::new(log_buffer),
+            viewport,
 
             quit_requested: false,
         };
@@ -128,6 +133,10 @@ impl Editor {
         self.quit_requested
     }
 
+    pub fn begin_frame_maintenance(&mut self, gpu: &Gpu) {
+        self.viewport.apply_resize(&gpu.device, &mut self.renderer, gpu.surface_config.format);
+    }
+
     #[tracing::instrument(skip_all)]
     pub fn render(
         &mut self,
@@ -137,6 +146,9 @@ impl Editor {
         framebuffer_height: u32,
     ) -> Result<()> {
         self.platform.prepare_frame(window, &mut self.imgui);
+
+        let viewport_texture_id = self.viewport.texture_id;
+        let mut viewport_desired_size = self.viewport.desired;
 
         let ui = self.imgui.frame();
 
@@ -156,14 +168,20 @@ impl Editor {
             self.quit_requested = true;
         }
 
-        ui.window("Hierarchy").build(|| ui.text("Hierarchy"));
-        ui.window("Inspector").build(|| ui.text("Inspector"));
-
         let copy_request = self.console.render(ui);
+        ui.window("Inspector").build(|| ui.text("Inspector"));
+        ui.window("Hierarchy").build(|| ui.text("Hierarchy"));
 
         let game_class = WindowClass::default().dock_node_flags_override_set(DockNodeFlags::AUTO_HIDE_TAB_BAR);
         ui.set_next_window_class(&game_class);
-        ui.window("Game").build(|| ui.text("Game"));
+        let padding = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
+        ui.window("Game").build(|| {
+            let [width, height] = ui.content_region_avail();
+            viewport_desired_size = (width.max(1.0) as u32, height.max(1.0) as u32);
+
+            ui.image(viewport_texture_id, [width.max(1.0), height.max(1.0)]);
+        });
+        padding.pop();
 
         self.renderer.new_frame()?;
         self.renderer.render_context_with_fb_size(
@@ -176,6 +194,8 @@ impl Editor {
         if let Some(text) = copy_request {
             self.imgui.set_clipboard_text(text);
         }
+
+        self.viewport.desired = viewport_desired_size;
 
         Ok(())
     }

@@ -70,6 +70,8 @@ impl EngineState {
             self.fps_frame_count = 0;
         }
 
+        self.editor.begin_frame_maintenance(&self.gpu);
+
         let (frame, reconfigure_after_present) = match self.gpu.acquire_frame()? {
             Frame::Ready(frame, reconfigure) => (frame, reconfigure),
             Frame::Skip => return Ok(()),
@@ -81,31 +83,39 @@ impl EngineState {
             label: Some("frame_encoder"),
         });
 
-        // {
-        //     let _span = tracing::debug_span!("game_pass").entered();
+        {
+            let _span = tracing::debug_span!("game_pass").entered();
 
-        //     let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //         label: Some("ui_pass"),
-        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //             view: &view,
-        //             resolve_target: None,
-        //             ops: wgpu::Operations {
-        //                 load: wgpu::LoadOp::Clear(wgpu::Color {
-        //                     r: 0.06,
-        //                     g: 0.07,
-        //                     b: 0.09,
-        //                     a: 1.0,
-        //                 }),
-        //                 store: wgpu::StoreOp::Store,
-        //             },
-        //             depth_slice: None,
-        //         })],
-        //         depth_stencil_attachment: None,
-        //         timestamp_writes: None,
-        //         occlusion_query_set: None,
-        //         multiview_mask: None,
-        //     });
-        // }
+            let viewport = &self.editor.viewport;
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("game_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &viewport.color_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.48,
+                            g: 0.03,
+                            b: 0.35,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &viewport.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
 
         {
             let _span = tracing::debug_span!("editor_ui_pass").entered();
