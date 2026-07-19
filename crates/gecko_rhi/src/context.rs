@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::RhiError;
 
 const BINDLESS_FEATURES: wgpu::Features = wgpu::Features::TEXTURE_BINDING_ARRAY
@@ -8,7 +10,7 @@ pub struct ContextConfig {
     pub power_preference: wgpu::PowerPreference,
     pub min_immediate_size: u32,
     pub min_bind_groups: u32,
-    pub frames_in_flight: usize,
+    pub frames_in_flight: NonZeroUsize,
 }
 
 impl Default for ContextConfig {
@@ -17,7 +19,7 @@ impl Default for ContextConfig {
             power_preference: wgpu::PowerPreference::HighPerformance,
             min_immediate_size: 128,
             min_bind_groups: 8,
-            frames_in_flight: 2,
+            frames_in_flight: NonZeroUsize::new(2).unwrap(),
         }
     }
 }

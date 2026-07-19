@@ -1,6 +1,10 @@
 pub mod context;
+pub mod frame;
 
-use crate::context::{Capabilities, Context, ContextConfig};
+use crate::{
+    context::{Capabilities, Context, ContextConfig},
+    frame::{FrameContext, FrameTiming, FrameUniform, FramesInFlight, frame_uniform_layout},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RhiError {
@@ -23,6 +27,8 @@ pub enum RhiError {
 
 pub struct Rhi {
     context: Context,
+    frames: FramesInFlight,
+    frame_uniform_layout: wgpu::BindGroupLayout,
 }
 
 impl Rhi {
@@ -32,8 +38,43 @@ impl Rhi {
     ) -> Result<(Self, wgpu::Surface<'static>), RhiError> {
         let (context, raw_surface) = Context::new(config, surface_target)?;
 
-        Ok((Self { context }, raw_surface))
+        let frame_uniform_layout = frame_uniform_layout(context.device());
+        let frames = FramesInFlight::new(context.device(), config.frames_in_flight, &frame_uniform_layout);
+
+        Ok((
+            Self {
+                context,
+                frames,
+                frame_uniform_layout,
+            },
+            raw_surface,
+        ))
     }
+
+    // --- frame lifecycle -------------------------------------------------------------------------
+
+    #[tracing::instrument(skip_all)]
+    pub fn begin_frame(&mut self, timing: FrameTiming) -> FrameContext<'_> {
+        let frame_index = self.frames.frame_index();
+        let slot_index = self.frames.slot_index();
+
+        let frame_uniform = FrameUniform {
+            frame_index: frame_index as u32,
+            _pad: 0,
+            time: timing.time,
+            delta_time: timing.delta_time,
+        };
+
+        self.context.queue().write_buffer(
+            &self.frames.current().frame_uniform,
+            0,
+            bytemuck::bytes_of(&frame_uniform),
+        );
+
+        FrameContext::new(self, frame_index, slot_index, timing)
+    }
+
+    // --- accessors -------------------------------------------------------------------------------
 
     #[inline]
     pub fn context(&self) -> &Context {
@@ -43,6 +84,11 @@ impl Rhi {
     #[inline]
     pub fn capabilities(&self) -> &Capabilities {
         self.context.capabilities()
+    }
+
+    #[inline]
+    pub fn frame_uniform_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.frame_uniform_layout
     }
 
     /// Clone of the instance, for imgui initialization only.

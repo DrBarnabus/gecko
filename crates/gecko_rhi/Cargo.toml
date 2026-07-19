@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bytemuck.workspace = true
 pollster.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

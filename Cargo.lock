@@ -581,6 +581,7 @@ dependencies = [
 name = "gecko_rhi"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "pollster",
  "thiserror 2.0.19",
  "tracing",

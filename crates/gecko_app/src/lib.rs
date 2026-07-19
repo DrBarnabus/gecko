@@ -7,7 +7,7 @@ use gecko_renderer::{
     scene_renderer::SceneRenderer,
     surface::{Frame, Surface},
 };
-use gecko_rhi::{Rhi, context::ContextConfig};
+use gecko_rhi::{Rhi, context::ContextConfig, frame::FrameTiming};
 use gecko_runtime::Scene;
 use winit::{
     application::ApplicationHandler,
@@ -25,6 +25,7 @@ struct EngineState {
     scene: Scene,
     scene_renderer: SceneRenderer,
 
+    start: Instant,
     last_frame: Instant,
     fps_accumulator: f32,
     fps_frame_count: u32,
@@ -48,7 +49,7 @@ impl EngineState {
         let editor = Editor::new(&rhi, &surface, &window, log_buffer)?;
 
         let scene = Scene::new();
-        let scene_renderer = SceneRenderer::new(&rhi.device(), surface.format());
+        let scene_renderer = SceneRenderer::new(&rhi.device(), surface.format(), rhi.frame_uniform_layout());
 
         tracing::info!(width, height, "initialized");
 
@@ -60,6 +61,7 @@ impl EngineState {
             scene,
             scene_renderer,
 
+            start: Instant::now(),
             last_frame: Instant::now(),
             fps_accumulator: 0.0,
             fps_frame_count: 0,
@@ -99,12 +101,12 @@ impl EngineState {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self
-            .rhi
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("frame_encoder"),
-            });
+        let mut frame = self.rhi.begin_frame(FrameTiming {
+            time: self.start.elapsed().as_secs_f32(),
+            delta_time,
+        });
+
+        let mut encoder = frame.create_encoder("frame_encoder");
 
         {
             let _span = tracing::debug_span!("game_pass").entered();
@@ -113,7 +115,8 @@ impl EngineState {
             let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
             self.scene_renderer.render(
                 &mut encoder,
-                &self.rhi.queue(),
+                frame.queue(),
+                frame.frame_uniform_bind_group(),
                 &viewport.color_view,
                 &viewport.depth_view,
                 view_proj,
@@ -156,7 +159,8 @@ impl EngineState {
             )?;
         }
 
-        tracing::debug_span!("queue_submit").in_scope(|| self.rhi.queue().submit(Some(encoder.finish())));
+        frame.submit(encoder.finish());
+        frame.end();
 
         self.surface.present(surface_texture, reconfigure_after_present);
 

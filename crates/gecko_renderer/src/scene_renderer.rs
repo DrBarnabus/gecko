@@ -49,7 +49,11 @@ pub struct SceneRenderer {
 }
 
 impl SceneRenderer {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        frame_uniform_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("scene_shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SHADER)),
@@ -77,7 +81,7 @@ impl SceneRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene_pipeline_layout"),
-            bind_group_layouts: &[Some(&uniform_layout)],
+            bind_group_layouts: &[Some(frame_uniform_layout), None, None, Some(&uniform_layout)],
             immediate_size: 0,
         });
 
@@ -213,6 +217,7 @@ impl SceneRenderer {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         queue: &wgpu::Queue,
+        frame_uniform_bind_group: &wgpu::BindGroup,
         color_view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
         view_proj: Mat4,
@@ -277,9 +282,11 @@ impl SceneRenderer {
             multiview_mask: None,
         });
 
+        render_pass.set_bind_group(0, frame_uniform_bind_group, &[]);
+
         if show_grid {
             render_pass.set_pipeline(&self.grid_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[0]);
+            render_pass.set_bind_group(3, &self.uniform_bind_group, &[0]);
             render_pass.set_vertex_buffer(0, self.grid_vb.slice(..));
             render_pass.draw(0..self.grid_vertex_count, 0..1);
         }
@@ -289,7 +296,7 @@ impl SceneRenderer {
         render_pass.set_index_buffer(self.cube_ib.slice(..), wgpu::IndexFormat::Uint16);
         for i in 0..objects.len() {
             let offset = ((base + i) as u64 * self.uniform_stride) as u32;
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[offset]);
+            render_pass.set_bind_group(3, &self.uniform_bind_group, &[offset]);
             render_pass.draw_indexed(0..self.cube_index_count, 0, 0..1);
         }
     }

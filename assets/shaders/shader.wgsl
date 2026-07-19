@@ -1,10 +1,20 @@
+struct FrameUniform {
+    frame_index: u32,
+    _pad: u32,
+    time: f32,
+    delta_time: f32,
+};
+
+@group(0) @binding(0)
+var<uniform> frame: FrameUniform;
+
 struct ObjectUniform {
     view_proj: mat4x4<f32>,
     model: mat4x4<f32>,
     tint: vec4<f32>,
 };
 
-@group(0) @binding(0)
+@group(3) @binding(0)
 var<uniform> u: ObjectUniform;
 
 struct VsIn {
@@ -28,14 +38,16 @@ fn vs_main(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
+    let pulse = 0.65 + 0.35 * sin(frame.time * 2.0);
+
     let n_len2 = dot(i.world_normal, i.world_normal);
     if (n_len2 < 1e-6) {
-        return vec4<f32>(u.tint.rgb, 1.0);
+        return vec4<f32>(u.tint.rgb * pulse, 1.0);
     }
 
     let n = normalize(i.world_normal);
     let light_dir = normalize(vec3<f32>(-0.6, -1.0, -0.3));
     let ambient = 0.25;
     let diff = max(dot(n, -light_dir), 0.0);
-    return vec4<f32>(u.tint.rgb * (ambient + diff), 1.0);
+    return vec4<f32>(u.tint.rgb * (ambient + diff) * pulse, 1.0);
 }
