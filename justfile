@@ -13,6 +13,9 @@ build-release:
 run:
     cargo run --bin gecko_app
 
+run-trace:
+    cargo run --bin gecko_app -F tracy
+
 run-release:
     cargo run --bin gecko_app --release
 
