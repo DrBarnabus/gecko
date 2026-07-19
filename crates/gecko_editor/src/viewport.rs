@@ -13,8 +13,16 @@ pub struct Viewport {
 }
 
 impl Viewport {
-    fn create_targets(device: &wgpu::Device, format: wgpu::TextureFormat, (w, h): (u32, u32)) -> (wgpu::Texture, wgpu::TextureView, wgpu::Texture, wgpu::TextureView) {
-        let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
+    fn create_targets(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        (w, h): (u32, u32),
+    ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Texture, wgpu::TextureView) {
+        let size = wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        };
 
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("viewport_color"),
@@ -49,7 +57,15 @@ impl Viewport {
 
         let texture_id = renderer.register_external_texture(&color, &color_view);
 
-        Self { color, color_view, depth, depth_view, texture_id, size, desired: size }
+        Self {
+            color,
+            color_view,
+            depth,
+            depth_view,
+            texture_id,
+            size,
+            desired: size,
+        }
     }
 
     pub fn aspect(&self) -> f32 {

@@ -3,7 +3,11 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Result;
 use gecko_core::diagnostics::LogBuffer;
 use gecko_editor::Editor;
-use gecko_renderer::gpu::{Frame, Gpu};
+use gecko_renderer::{
+    gpu::{Frame, Gpu},
+    scene_renderer::SceneRenderer,
+};
+use gecko_runtime::Scene;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -16,6 +20,8 @@ struct EngineState {
     window: Arc<Window>,
     gpu: Gpu,
     editor: Editor,
+    scene: Scene,
+    scene_renderer: SceneRenderer,
 
     last_frame: Instant,
     fps_accumulator: f32,
@@ -37,12 +43,17 @@ impl EngineState {
 
         let editor = Editor::new(&gpu, &window, log_buffer)?;
 
+        let scene = Scene::new();
+        let scene_renderer = SceneRenderer::new(&gpu.device, gpu.surface_config.format);
+
         tracing::info!(adapter = %gpu.adapter.get_info().name, backend = ?gpu.adapter.get_info().backend, width, height, "initialized");
 
         Ok(Self {
             window,
             gpu,
             editor,
+            scene,
+            scene_renderer,
 
             last_frame: Instant::now(),
             fps_accumulator: 0.0,
@@ -72,6 +83,8 @@ impl EngineState {
 
         self.editor.begin_frame_maintenance(&self.gpu);
 
+        self.scene.update(delta_time);
+
         let (frame, reconfigure_after_present) = match self.gpu.acquire_frame()? {
             Frame::Ready(frame, reconfigure) => (frame, reconfigure),
             Frame::Skip => return Ok(()),
@@ -87,34 +100,16 @@ impl EngineState {
             let _span = tracing::debug_span!("game_pass").entered();
 
             let viewport = &self.editor.viewport;
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("game_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &viewport.color_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.48,
-                            g: 0.03,
-                            b: 0.35,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &viewport.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
+            let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
+            self.scene_renderer.render(
+                &mut encoder,
+                &self.gpu.queue,
+                &viewport.color_view,
+                &viewport.depth_view,
+                view_proj,
+                &self.scene.draw_list(),
+                self.scene.show_grid,
+            );
         }
 
         {
@@ -144,6 +139,7 @@ impl EngineState {
 
             self.editor.render(
                 &self.window,
+                &mut self.scene,
                 &mut render_pass,
                 self.gpu.surface_config.width,
                 self.gpu.surface_config.height,

@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use dear_imgui_rs::{
-    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, StyleVar,
-    Ui, WindowClass,
+    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, StyleVar, Ui,
+    WindowClass,
 };
 use dear_imgui_wgpu::{GammaMode, WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use gecko_core::diagnostics::LogBuffer;
 use gecko_renderer::gpu::Gpu;
+use gecko_runtime::Scene;
 use winit::{
     event::WindowEvent,
     window::{Window, WindowId},
@@ -134,13 +135,15 @@ impl Editor {
     }
 
     pub fn begin_frame_maintenance(&mut self, gpu: &Gpu) {
-        self.viewport.apply_resize(&gpu.device, &mut self.renderer, gpu.surface_config.format);
+        self.viewport
+            .apply_resize(&gpu.device, &mut self.renderer, gpu.surface_config.format);
     }
 
     #[tracing::instrument(skip_all)]
     pub fn render(
         &mut self,
         window: &Window,
+        scene: &mut Scene,
         render_pass: &mut wgpu::RenderPass<'_>,
         framebuffer_width: u32,
         framebuffer_height: u32,
@@ -169,8 +172,8 @@ impl Editor {
         }
 
         let copy_request = self.console.render(ui);
-        ui.window("Inspector").build(|| ui.text("Inspector"));
-        ui.window("Hierarchy").build(|| ui.text("Hierarchy"));
+        inspector_render(ui, scene);
+        hierarchy_render(ui, scene);
 
         let game_class = WindowClass::default().dock_node_flags_override_set(DockNodeFlags::AUTO_HIDE_TAB_BAR);
         ui.set_next_window_class(&game_class);
@@ -235,4 +238,72 @@ fn build_dock_layout(ui: &Ui) -> Result<Id, DockLayoutError> {
         .flags(DockNodeFlags::PASSTHRU_CENTRAL_NODE);
 
     ui.dockspace_over_main_viewport_with_layout(&target, &layout, DockLayoutApply::IfMissing)
+}
+
+fn hierarchy_render(ui: &Ui, scene: &mut Scene) {
+    ui.window("Hierarchy").build(|| {
+        let mut clicked = None;
+
+        for (idx, cube) in scene.cubes.iter().enumerate() {
+            let selected = scene.selected == Some(idx);
+
+            if ui.selectable_config(&cube.name).selected(selected).build() {
+                clicked = Some(idx);
+            }
+        }
+
+        if let Some(idx) = clicked {
+            if scene.selected != Some(idx) {
+                tracing::debug!(entity = %scene.cubes[idx].name, "selected");
+            }
+
+            scene.selected = Some(idx);
+        }
+
+        if ui.is_window_hovered() && ui.is_mouse_clicked(dear_imgui_rs::MouseButton::Right) {
+            scene.selected = None;
+        }
+    });
+}
+
+fn inspector_render(ui: &Ui, scene: &mut Scene) {
+    ui.window("Inspector").build(|| match scene.selected {
+        Some(idx) => {
+            let cube = &mut scene.cubes[idx];
+
+            ui.text(&cube.name);
+            ui.separator();
+
+            ui.text("Position");
+            for (axis, value) in ["##px", "##py", "##pz"].iter().zip(cube.position.iter_mut()) {
+                ui.set_next_item_width(90.0);
+                ui.drag_float_config(axis).speed(0.05).build(ui, value);
+                ui.same_line();
+            }
+            ui.new_line();
+
+            ui.set_next_item_width(120.0);
+            ui.drag_float_config("Scale").speed(0.02).build(ui, &mut cube.scale);
+            ui.set_next_item_width(120.0);
+            ui.drag_float_config("Spin").speed(0.02).build(ui, &mut cube.spin_speed);
+            ui.color_edit3("Color", &mut cube.color);
+        }
+        None => {
+            ui.text("Camera");
+            ui.separator();
+
+            ui.set_next_item_width(140.0);
+            ui.slider_config("Yaw", -3.2, 3.2).build(&mut scene.camera.yaw);
+            ui.set_next_item_width(140.0);
+            ui.slider_config("Pitch", 0.05, 1.45).build(&mut scene.camera.pitch);
+            ui.set_next_item_width(140.0);
+            ui.slider_config("Distance", 2.0, 25.0)
+                .build(&mut scene.camera.distance);
+
+            ui.checkbox("Show grid", &mut scene.show_grid);
+            ui.separator();
+
+            ui.text_disabled("Select a cube in the Hierarchy");
+        }
+    });
 }

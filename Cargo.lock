@@ -531,6 +531,7 @@ dependencies = [
  "gecko_core",
  "gecko_editor",
  "gecko_renderer",
+ "gecko_runtime",
  "tracing",
  "wgpu",
  "winit",
@@ -556,6 +557,7 @@ dependencies = [
  "dear-imgui-winit",
  "gecko_core",
  "gecko_renderer",
+ "gecko_runtime",
  "tracing",
  "wgpu",
  "winit",
@@ -566,9 +568,19 @@ name = "gecko_renderer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
+ "gecko_core",
  "pollster",
  "tracing",
  "wgpu",
+]
+
+[[package]]
+name = "gecko_runtime"
+version = "0.1.0"
+dependencies = [
+ "gecko_core",
+ "tracing",
 ]
 
 [[package]]
