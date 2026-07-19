@@ -143,4 +143,8 @@ impl Context {
     pub fn capabilities(&self) -> &Capabilities {
         &self.capabilities
     }
+
+    pub fn wait_idle(&self) {
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
 }

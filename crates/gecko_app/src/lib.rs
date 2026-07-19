@@ -166,6 +166,12 @@ impl EngineState {
     }
 }
 
+impl Drop for EngineState {
+    fn drop(&mut self) {
+        self.rhi.context().wait_idle();
+    }
+}
+
 struct App {
     state: Option<EngineState>,
     log_buffer: Arc<LogBuffer>,
