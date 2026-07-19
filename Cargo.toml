@@ -11,6 +11,7 @@ rust-version = "1.96"
 gecko_core = { path = "crates/gecko_core" }
 gecko_editor = { path = "crates/gecko_editor" }
 gecko_renderer = { path = "crates/gecko_renderer" }
+gecko_rhi = { path = "crates/gecko_rhi" }
 gecko_runtime = { path = "crates/gecko_runtime" }
 
 anyhow = "1.0.103"
@@ -20,6 +21,7 @@ dear-imgui-wgpu = { git = "https://github.com/Latias94/dear-imgui-rs", rev = "f0
 dear-imgui-winit = { git = "https://github.com/Latias94/dear-imgui-rs", rev = "f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3" }
 glam = "0.33.2"
 pollster = "1.0.1"
+thiserror = "2.0.19"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-tracy = "0.11.4"

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use gecko_rhi::Rhi;
 
 pub enum Frame {
     // Frame acquired, bool = surface should be reconfigured after present.
@@ -7,28 +8,18 @@ pub enum Frame {
     Skip,
 }
 
-pub struct Gpu {
-    pub instance: wgpu::Instance,
-    pub adapter: wgpu::Adapter,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub surface: wgpu::Surface<'static>,
-    pub surface_config: wgpu::SurfaceConfiguration,
+pub struct Surface {
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
-impl Gpu {
-    pub fn new(target: impl Into<wgpu::SurfaceTarget<'static>>, width: u32, height: u32) -> Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let surface = instance.create_surface(target)?;
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            apply_limit_buckets: false,
-            force_fallback_adapter: false,
-        }))?;
-
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))?;
+impl Surface {
+    pub fn new(rhi: &Rhi, surface: wgpu::Surface<'static>, width: u32, height: u32) -> Self {
+        let adapter = rhi.adapter();
+        let device = rhi.device();
+        let queue = rhi.queue();
 
         let capabilities = surface.get_capabilities(&adapter);
         let format = [wgpu::TextureFormat::Bgra8UnormSrgb, wgpu::TextureFormat::Rgba8UnormSrgb]
@@ -36,7 +27,7 @@ impl Gpu {
             .find(|f| capabilities.formats.contains(f))
             .unwrap_or(capabilities.formats[0]);
 
-        let surface_config = wgpu::SurfaceConfiguration {
+        let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
             color_space: wgpu::SurfaceColorSpace::Auto,
@@ -48,25 +39,44 @@ impl Gpu {
             desired_maximum_frame_latency: 2,
         };
 
-        surface.configure(&device, &surface_config);
+        surface.configure(&device, &config);
 
-        Ok(Self {
-            instance,
-            adapter,
+        Self {
+            surface,
+            config,
             device,
             queue,
-            surface,
-            surface_config,
-        })
+        }
     }
 
+    #[inline]
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.config.format
+    }
+
+    #[inline]
+    pub fn width(&self) -> u32 {
+        self.config.width
+    }
+
+    #[inline]
+    pub fn height(&self) -> u32 {
+        self.config.height
+    }
+
+    #[tracing::instrument(skip_all)]
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
-            self.surface_config.width = width;
-            self.surface_config.height = height;
+            self.config.width = width;
+            self.config.height = height;
 
-            self.surface.configure(&self.device, &self.surface_config);
+            self.surface.configure(&self.device, &self.config);
         }
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub fn reconfigure(&self) {
+        self.surface.configure(&self.device, &self.config);
     }
 
     #[tracing::instrument(skip_all)]
@@ -75,7 +85,8 @@ impl Gpu {
             wgpu::CurrentSurfaceTexture::Success(frame) => Frame::Ready(frame, false),
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => Frame::Ready(frame, true),
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.surface_config);
+                self.reconfigure();
+
                 Frame::Skip
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => Frame::Skip,
@@ -83,5 +94,14 @@ impl Gpu {
                 anyhow::bail!("surface acquisition failed with a validation error")
             }
         })
+    }
+
+    #[tracing::instrument(skip_all, fields(reconfigure))]
+    pub fn present(&self, frame: wgpu::SurfaceTexture, reconfigure: bool) {
+        self.queue.present(frame);
+
+        if reconfigure {
+            self.reconfigure();
+        }
     }
 }

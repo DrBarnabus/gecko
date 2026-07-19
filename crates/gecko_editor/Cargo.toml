@@ -18,6 +18,7 @@ dear-imgui-wgpu.workspace = true
 dear-imgui-winit.workspace = true
 gecko_core.workspace = true
 gecko_renderer.workspace = true
+gecko_rhi.workspace = true
 gecko_runtime.workspace = true
 tracing.workspace = true
 wgpu.workspace = true

@@ -4,9 +4,10 @@ use anyhow::Result;
 use gecko_core::diagnostics::LogBuffer;
 use gecko_editor::Editor;
 use gecko_renderer::{
-    gpu::{Frame, Gpu},
     scene_renderer::SceneRenderer,
+    surface::{Frame, Surface},
 };
+use gecko_rhi::{Rhi, context::ContextConfig};
 use gecko_runtime::Scene;
 use winit::{
     application::ApplicationHandler,
@@ -18,7 +19,8 @@ use winit::{
 
 struct EngineState {
     window: Arc<Window>,
-    gpu: Gpu,
+    rhi: Rhi,
+    surface: Surface,
     editor: Editor,
     scene: Scene,
     scene_renderer: SceneRenderer,
@@ -38,19 +40,22 @@ impl EngineState {
             )?,
         );
 
-        let PhysicalSize { width, height } = window.inner_size();
-        let gpu = Gpu::new(window.clone(), width, height)?;
+        let (rhi, raw_surface) = Rhi::new(&ContextConfig::default(), window.clone())?;
 
-        let editor = Editor::new(&gpu, &window, log_buffer)?;
+        let PhysicalSize { width, height } = window.inner_size();
+        let surface = Surface::new(&rhi, raw_surface, width, height);
+
+        let editor = Editor::new(&rhi, &surface, &window, log_buffer)?;
 
         let scene = Scene::new();
-        let scene_renderer = SceneRenderer::new(&gpu.device, gpu.surface_config.format);
+        let scene_renderer = SceneRenderer::new(&rhi.device(), surface.format());
 
-        tracing::info!(adapter = %gpu.adapter.get_info().name, backend = ?gpu.adapter.get_info().backend, width, height, "initialized");
+        tracing::info!(width, height, "initialized");
 
         Ok(Self {
             window,
-            gpu,
+            rhi,
+            surface,
             editor,
             scene,
             scene_renderer,
@@ -81,20 +86,25 @@ impl EngineState {
             self.fps_frame_count = 0;
         }
 
-        self.editor.begin_frame_maintenance(&self.gpu);
+        self.editor.begin_frame_maintenance(&self.rhi, self.surface.format());
 
         self.scene.update(delta_time);
 
-        let (frame, reconfigure_after_present) = match self.gpu.acquire_frame()? {
-            Frame::Ready(frame, reconfigure) => (frame, reconfigure),
+        let (surface_texture, reconfigure_after_present) = match self.surface.acquire_frame()? {
+            Frame::Ready(surface_texture, reconfigure) => (surface_texture, reconfigure),
             Frame::Skip => return Ok(()),
         };
 
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("frame_encoder"),
-        });
+        let mut encoder = self
+            .rhi
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame_encoder"),
+            });
 
         {
             let _span = tracing::debug_span!("game_pass").entered();
@@ -103,7 +113,7 @@ impl EngineState {
             let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
             self.scene_renderer.render(
                 &mut encoder,
-                &self.gpu.queue,
+                &self.rhi.queue(),
                 &viewport.color_view,
                 &viewport.depth_view,
                 view_proj,
@@ -141,19 +151,14 @@ impl EngineState {
                 &self.window,
                 &mut self.scene,
                 &mut render_pass,
-                self.gpu.surface_config.width,
-                self.gpu.surface_config.height,
+                self.surface.width(),
+                self.surface.height(),
             )?;
         }
 
-        tracing::debug_span!("queue_submit").in_scope(|| self.gpu.queue.submit(Some(encoder.finish())));
-        tracing::debug_span!("queue_present").in_scope(|| {
-            self.gpu.queue.present(frame);
+        tracing::debug_span!("queue_submit").in_scope(|| self.rhi.queue().submit(Some(encoder.finish())));
 
-            if reconfigure_after_present {
-                self.gpu.surface.configure(&self.gpu.device, &self.gpu.surface_config);
-            }
-        });
+        self.surface.present(surface_texture, reconfigure_after_present);
 
         self.editor.update_platform_windows();
 
@@ -198,10 +203,10 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested if is_main_window => event_loop.exit(),
-            WindowEvent::Resized(size) if is_main_window => state.gpu.resize(size.width, size.height),
+            WindowEvent::Resized(size) if is_main_window => state.surface.resize(size.width, size.height),
             WindowEvent::ScaleFactorChanged { .. } if is_main_window => {
                 let PhysicalSize { width, height } = state.window.inner_size();
-                state.gpu.resize(width, height);
+                state.surface.resize(width, height);
             }
             WindowEvent::RedrawRequested if is_main_window => {
                 #[cfg(feature = "multi-viewport")]

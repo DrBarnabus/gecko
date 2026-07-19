@@ -1,14 +1,12 @@
 [package]
-name = "gecko_renderer"
+name = "gecko_rhi"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-anyhow.workspace = true
-bytemuck.workspace = true
-gecko_core.workspace = true
-gecko_rhi.workspace = true
+pollster.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 wgpu.workspace = true
 

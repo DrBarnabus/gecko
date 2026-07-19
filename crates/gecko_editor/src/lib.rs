@@ -11,7 +11,8 @@ use dear_imgui_rs::{
 use dear_imgui_wgpu::{GammaMode, WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use gecko_core::diagnostics::LogBuffer;
-use gecko_renderer::gpu::Gpu;
+use gecko_renderer::surface::Surface;
+use gecko_rhi::Rhi;
 use gecko_runtime::Scene;
 use winit::{
     event::WindowEvent,
@@ -48,7 +49,7 @@ impl Drop for Editor {
 }
 
 impl Editor {
-    pub fn new(gpu: &Gpu, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
+    pub fn new(rhi: &Rhi, surface: &Surface, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
         let viewports_enabled = cfg!(feature = "multi-viewport")
             && cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
 
@@ -72,16 +73,16 @@ impl Editor {
 
         ui::fonts::load_fonts(&mut imgui);
 
-        let init_info = WgpuInitInfo::new(gpu.device.clone(), gpu.queue.clone(), gpu.surface_config.format)
-            .with_instance(gpu.instance.clone())
-            .with_adapter(gpu.adapter.clone());
+        let init_info = WgpuInitInfo::new(rhi.device(), rhi.queue(), surface.format())
+            .with_instance(rhi.instance())
+            .with_adapter(rhi.adapter());
 
         let mut renderer = WgpuRenderer::new(init_info, &mut imgui)?;
         renderer.set_gamma_mode(GammaMode::Auto);
 
         ui::theme::set_style(&mut imgui);
 
-        let viewport = Viewport::new(&gpu.device, &mut renderer, gpu.surface_config.format);
+        let viewport = Viewport::new(rhi.device(), &mut renderer, surface.format());
 
         let mut editor = Self {
             imgui,
@@ -134,9 +135,8 @@ impl Editor {
         self.quit_requested
     }
 
-    pub fn begin_frame_maintenance(&mut self, gpu: &Gpu) {
-        self.viewport
-            .apply_resize(&gpu.device, &mut self.renderer, gpu.surface_config.format);
+    pub fn begin_frame_maintenance(&mut self, rhi: &Rhi, format: wgpu::TextureFormat) {
+        self.viewport.apply_resize(rhi.device(), &mut self.renderer, format);
     }
 
     #[tracing::instrument(skip_all)]

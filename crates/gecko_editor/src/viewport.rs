@@ -14,7 +14,7 @@ pub struct Viewport {
 
 impl Viewport {
     fn create_targets(
-        device: &wgpu::Device,
+        device: wgpu::Device,
         format: wgpu::TextureFormat,
         (w, h): (u32, u32),
     ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Texture, wgpu::TextureView) {
@@ -51,7 +51,7 @@ impl Viewport {
         (color, color_view, depth, depth_view)
     }
 
-    pub fn new(device: &wgpu::Device, renderer: &mut WgpuRenderer, format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: wgpu::Device, renderer: &mut WgpuRenderer, format: wgpu::TextureFormat) -> Self {
         let size = (1280, 720);
         let (color, color_view, depth, depth_view) = Self::create_targets(device, format, size);
 
@@ -72,7 +72,7 @@ impl Viewport {
         self.size.0 as f32 / self.size.1.max(1) as f32
     }
 
-    pub fn apply_resize(&mut self, device: &wgpu::Device, renderer: &mut WgpuRenderer, format: wgpu::TextureFormat) {
+    pub fn apply_resize(&mut self, device: wgpu::Device, renderer: &mut WgpuRenderer, format: wgpu::TextureFormat) {
         if self.desired == self.size || self.desired.0 == 0 || self.desired.1 == 0 {
             return;
         }
