@@ -1,6 +1,6 @@
 use dear_imgui_rs::TextureId;
 use dear_imgui_wgpu::WgpuRenderer;
-use gecko_renderer::DEPTH_FORMAT;
+use gecko_rhi::conventions::DEPTH_FORMAT;
 
 pub struct Viewport {
     pub color: wgpu::Texture,

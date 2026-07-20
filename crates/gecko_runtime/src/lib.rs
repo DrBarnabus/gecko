@@ -20,7 +20,11 @@ impl OrbitCamera {
     }
 
     pub fn proj(&self, aspect: f32) -> Mat4 {
-        math::camera::rh::proj::directx::perspective(self.fov_y_deg.to_radians(), aspect.max(0.01), 0.1, 100.0)
+        math::camera::rh::proj::directx::perspective_infinite_reverse(
+            self.fov_y_deg.to_radians(),
+            aspect.max(0.01),
+            0.01,
+        )
     }
 }
 

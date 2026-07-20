@@ -1,9 +1,8 @@
 use std::{borrow::Cow, num::NonZeroU64};
 
 use gecko_core::math::Mat4;
+use gecko_rhi::conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT};
 use wgpu::util::DeviceExt;
-
-use crate::DEPTH_FORMAT;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -136,7 +135,7 @@ impl SceneRenderer {
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEPTH_FORMAT,
                         depth_write_enabled: Some(depth_write),
-                        depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                        depth_compare: Some(DEPTH_COMPARE),
                         stencil: Default::default(),
                         bias: Default::default(),
                     }),
@@ -272,7 +271,7 @@ impl SceneRenderer {
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: depth_view,
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
+                    load: wgpu::LoadOp::Clear(DEPTH_CLEAR),
                     store: wgpu::StoreOp::Store,
                 }),
                 stencil_ops: None,
