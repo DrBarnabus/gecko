@@ -1,6 +1,5 @@
 struct FrameUniform {
     frame_index: u32,
-    _pad: u32,
     time: f32,
     delta_time: f32,
 };

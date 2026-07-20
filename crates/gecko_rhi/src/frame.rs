@@ -1,14 +1,14 @@
 use std::cell::Cell;
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
+
+use encase::ShaderType;
 
 use crate::Rhi;
 
 /// Group-0 / per-frame data
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, ShaderType)]
 pub struct FrameUniform {
     pub frame_index: u32,
-    pub _pad: u32,
     pub time: f32,
     pub delta_time: f32,
 }
@@ -22,7 +22,7 @@ pub(crate) fn frame_uniform_layout(device: &wgpu::Device) -> wgpu::BindGroupLayo
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
-                min_binding_size: NonZeroU64::new(std::mem::size_of::<FrameUniform>() as u64),
+                min_binding_size: Some(FrameUniform::min_size()),
             },
             count: None,
         }],
@@ -49,7 +49,7 @@ impl FramesInFlight {
             .map(|i| {
                 let frame_uniform = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some(&format!("frame-globals[{i}]")),
-                    size: std::mem::size_of::<FrameUniform>() as u64,
+                    size: FrameUniform::min_size().get(),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });

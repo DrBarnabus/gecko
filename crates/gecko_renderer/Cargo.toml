@@ -7,8 +7,10 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 bytemuck.workspace = true
+encase.workspace = true
 gecko_core.workspace = true
 gecko_rhi.workspace = true
+glam = { workspace = true, features = ["encase"] }
 tracing.workspace = true
 wgpu.workspace = true
 

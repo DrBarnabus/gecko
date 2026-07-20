@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-bytemuck.workspace = true
+encase.workspace = true
 pollster.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

@@ -1,6 +1,7 @@
-use std::{borrow::Cow, num::NonZeroU64};
+use std::borrow::Cow;
 
-use gecko_core::math::Mat4;
+use encase::ShaderType;
+use gecko_core::math::{Mat4, Vec4};
 use gecko_rhi::{
     Rhi,
     conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT},
@@ -26,12 +27,11 @@ impl Vertex {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, ShaderType)]
 struct ObjectUniform {
-    view_proj: [[f32; 4]; 4],
-    model: [[f32; 4]; 4],
-    tint: [f32; 4],
+    view_proj: Mat4,
+    model: Mat4,
+    tint: Vec4,
 }
 
 const SHADER: &str = include_str!("../../../assets/shaders/shader.wgsl");
@@ -46,7 +46,7 @@ pub struct SceneRenderer {
     cube_index_count: u32,
     uniform_buffer: BufferHandle,
     uniform_bind_group: wgpu::BindGroup,
-    uniform_stride: u64,
+    uniform_alignment: u64,
     max_objects: usize,
 }
 
@@ -59,9 +59,9 @@ impl SceneRenderer {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SHADER)),
         });
 
-        let uniform_size = std::mem::size_of::<ObjectUniform>() as u64;
+        let uniform_size = ObjectUniform::min_size();
         let alignment = device.limits().min_uniform_buffer_offset_alignment as u64;
-        let uniform_stride = uniform_size.div_ceil(alignment) * alignment;
+        let uniform_stride = uniform_size.get().div_ceil(alignment) * alignment;
 
         let max_objects = 256usize;
 
@@ -73,7 +73,7 @@ impl SceneRenderer {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: true,
-                    min_binding_size: NonZeroU64::new(uniform_size),
+                    min_binding_size: Some(uniform_size),
                 },
                 count: None,
             }],
@@ -194,7 +194,7 @@ impl SceneRenderer {
                         .buffer_ref(uniform_buffer)
                         .expect("buffer was just created"),
                     offset: 0,
-                    size: NonZeroU64::new(uniform_size),
+                    size: Some(uniform_size),
                 }),
             }],
         });
@@ -209,7 +209,7 @@ impl SceneRenderer {
             cube_index_count: cube_indices.len() as u32,
             uniform_buffer,
             uniform_bind_group,
-            uniform_stride,
+            uniform_alignment: alignment,
             max_objects,
         }
     }
@@ -230,32 +230,34 @@ impl SceneRenderer {
         let object_count = objects.len() + usize::from(show_grid);
         assert!(object_count <= self.max_objects, "raise max_objects");
 
-        let uniform_size = std::mem::size_of::<ObjectUniform>();
-        let mut bytes = vec![0u8; self.uniform_stride as usize * object_count.max(1)];
-        let mut write = |slot: usize, model: Mat4, tint: [f32; 3]| {
+        let mut uniforms = encase::DynamicUniformBuffer::new_with_alignment(Vec::new(), self.uniform_alignment);
+        let mut offsets: Vec<u32> = Vec::with_capacity(object_count);
+        let mut write = |model: Mat4, tint: [f32; 3]| {
             let u = ObjectUniform {
-                view_proj: view_proj.to_cols_array_2d(),
-                model: model.to_cols_array_2d(),
-                tint: [tint[0], tint[1], tint[2], 1.0],
+                view_proj,
+                model,
+                tint: Vec4::new(tint[0], tint[1], tint[2], 1.0),
             };
 
-            let start = slot * self.uniform_stride as usize;
-            bytes[start..start + uniform_size].copy_from_slice(bytemuck::bytes_of(&u));
+            let offset = uniforms.write(&u).expect("encode object uniform") as u32;
+            offsets.push(offset);
         };
 
-        let mut base = 0usize;
+        let base = usize::from(show_grid);
 
         if show_grid {
-            write(0, Mat4::IDENTITY, [0.35, 0.37, 0.40]);
-            base = 1;
+            write(Mat4::IDENTITY, [0.35, 0.37, 0.40]);
         }
 
-        for (i, (model, color)) in objects.iter().enumerate() {
-            write(base + i, *model, *color);
+        for (model, color) in objects {
+            write(*model, *color);
         }
 
-        let uploaded = rhi.upload_buffer(self.uniform_buffer, 0, &bytes);
-        debug_assert!(uploaded, "stale uniform_buffer handle");
+        let bytes = uniforms.into_inner();
+        if !bytes.is_empty() {
+            let uploaded = rhi.upload_buffer(self.uniform_buffer, 0, &bytes);
+            debug_assert!(uploaded, "stale uniform_buffer handle");
+        }
 
         let registry = rhi.registry();
         let grid_vb = registry.buffer_ref(self.grid_vb).expect("grid_vb");
@@ -295,7 +297,7 @@ impl SceneRenderer {
 
         if show_grid {
             render_pass.set_pipeline(&self.grid_pipeline);
-            render_pass.set_bind_group(3, &self.uniform_bind_group, &[0]);
+            render_pass.set_bind_group(3, &self.uniform_bind_group, &[offsets[0]]);
             render_pass.set_vertex_buffer(0, grid_vb.slice(..));
             render_pass.draw(0..self.grid_vertex_count, 0..1);
         }
@@ -304,8 +306,7 @@ impl SceneRenderer {
         render_pass.set_vertex_buffer(0, cube_vb.slice(..));
         render_pass.set_index_buffer(cube_ib.slice(..), wgpu::IndexFormat::Uint16);
         for i in 0..objects.len() {
-            let offset = ((base + i) as u64 * self.uniform_stride) as u32;
-            render_pass.set_bind_group(3, &self.uniform_bind_group, &[offset]);
+            render_pass.set_bind_group(3, &self.uniform_bind_group, &[offsets[base + i]]);
             render_pass.draw_indexed(0..self.cube_index_count, 0, 0..1);
         }
     }

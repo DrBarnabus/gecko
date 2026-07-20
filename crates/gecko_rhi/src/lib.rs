@@ -66,16 +66,15 @@ impl Rhi {
 
         let frame_uniform = FrameUniform {
             frame_index: frame_index as u32,
-            _pad: 0,
             time: timing.time,
             delta_time: timing.delta_time,
         };
 
-        self.context.queue().write_buffer(
-            &self.frames.current().frame_uniform,
-            0,
-            bytemuck::bytes_of(&frame_uniform),
-        );
+        let mut encoded = encase::UniformBuffer::new(Vec::new());
+        encoded.write(&frame_uniform).expect("encode frame uniform");
+        self.context
+            .queue()
+            .write_buffer(&self.frames.current().frame_uniform, 0, &encoded.into_inner());
 
         FrameContext::new(self, frame_index, slot_index, timing)
     }
