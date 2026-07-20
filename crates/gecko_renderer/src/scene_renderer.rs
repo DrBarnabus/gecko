@@ -1,8 +1,11 @@
 use std::{borrow::Cow, num::NonZeroU64};
 
 use gecko_core::math::Mat4;
-use gecko_rhi::conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT};
-use wgpu::util::DeviceExt;
+use gecko_rhi::{
+    Rhi,
+    conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT},
+    resource::BufferHandle,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -36,23 +39,21 @@ const SHADER: &str = include_str!("../../../assets/shaders/shader.wgsl");
 pub struct SceneRenderer {
     grid_pipeline: wgpu::RenderPipeline,
     cube_pipeline: wgpu::RenderPipeline,
-    grid_vb: wgpu::Buffer,
+    grid_vb: BufferHandle,
     grid_vertex_count: u32,
-    cube_vb: wgpu::Buffer,
-    cube_ib: wgpu::Buffer,
+    cube_vb: BufferHandle,
+    cube_ib: BufferHandle,
     cube_index_count: u32,
-    uniform_buffer: wgpu::Buffer,
+    uniform_buffer: BufferHandle,
     uniform_bind_group: wgpu::BindGroup,
     uniform_stride: u64,
     max_objects: usize,
 }
 
 impl SceneRenderer {
-    pub fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        frame_uniform_layout: &wgpu::BindGroupLayout,
-    ) -> Self {
+    pub fn new(rhi: &mut Rhi, format: wgpu::TextureFormat) -> Self {
+        let device = rhi.device();
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("scene_shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SHADER)),
@@ -80,28 +81,8 @@ impl SceneRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene_pipeline_layout"),
-            bind_group_layouts: &[Some(frame_uniform_layout), None, None, Some(&uniform_layout)],
+            bind_group_layouts: &[Some(rhi.frame_uniform_layout()), None, None, Some(&uniform_layout)],
             immediate_size: 0,
-        });
-
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("scene_uniforms"),
-            size: uniform_stride * max_objects as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("scene_uniform_bg"),
-            layout: &uniform_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniform_buffer,
-                    offset: 0,
-                    size: NonZeroU64::new(uniform_size),
-                }),
-            }],
         });
 
         let make_pipeline =
@@ -177,22 +158,45 @@ impl SceneRenderer {
             });
         }
 
-        let grid_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let grid_vb = rhi.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("grid_vb"),
             contents: bytemuck::cast_slice(&grid_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
         let (cube_vertices, cube_indices) = cube_mesh();
-        let cube_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let cube_vb = rhi.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("cube_vb"),
             contents: bytemuck::cast_slice(&cube_vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let cube_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let cube_ib = rhi.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("cube_ib"),
             contents: bytemuck::cast_slice(&cube_indices),
             usage: wgpu::BufferUsages::INDEX,
+        });
+
+        let uniform_buffer = rhi.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("scene_uniforms"),
+            size: uniform_stride * max_objects as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("scene_uniform_bg"),
+            layout: &uniform_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: rhi
+                        .registry()
+                        .buffer_ref(uniform_buffer)
+                        .expect("buffer was just created"),
+                    offset: 0,
+                    size: NonZeroU64::new(uniform_size),
+                }),
+            }],
         });
 
         Self {
@@ -214,8 +218,8 @@ impl SceneRenderer {
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &self,
+        rhi: &Rhi,
         encoder: &mut wgpu::CommandEncoder,
-        queue: &wgpu::Queue,
         frame_uniform_bind_group: &wgpu::BindGroup,
         color_view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
@@ -250,7 +254,13 @@ impl SceneRenderer {
             write(base + i, *model, *color);
         }
 
-        queue.write_buffer(&self.uniform_buffer, 0, &bytes);
+        let uploaded = rhi.upload_buffer(self.uniform_buffer, 0, &bytes);
+        debug_assert!(uploaded, "stale uniform_buffer handle");
+
+        let registry = rhi.registry();
+        let grid_vb = registry.buffer_ref(self.grid_vb).expect("grid_vb");
+        let cube_vb = registry.buffer_ref(self.cube_vb).expect("cube_vb");
+        let cube_ib = registry.buffer_ref(self.cube_ib).expect("cube_ib");
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene_pass"),
@@ -286,13 +296,13 @@ impl SceneRenderer {
         if show_grid {
             render_pass.set_pipeline(&self.grid_pipeline);
             render_pass.set_bind_group(3, &self.uniform_bind_group, &[0]);
-            render_pass.set_vertex_buffer(0, self.grid_vb.slice(..));
+            render_pass.set_vertex_buffer(0, grid_vb.slice(..));
             render_pass.draw(0..self.grid_vertex_count, 0..1);
         }
 
         render_pass.set_pipeline(&self.cube_pipeline);
-        render_pass.set_vertex_buffer(0, self.cube_vb.slice(..));
-        render_pass.set_index_buffer(self.cube_ib.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_vertex_buffer(0, cube_vb.slice(..));
+        render_pass.set_index_buffer(cube_ib.slice(..), wgpu::IndexFormat::Uint16);
         for i in 0..objects.len() {
             let offset = ((base + i) as u64 * self.uniform_stride) as u32;
             render_pass.set_bind_group(3, &self.uniform_bind_group, &[offset]);

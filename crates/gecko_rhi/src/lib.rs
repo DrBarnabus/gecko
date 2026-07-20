@@ -1,10 +1,12 @@
 pub mod context;
 pub mod conventions;
 pub mod frame;
+pub mod resource;
 
 use crate::{
     context::{Capabilities, Context, ContextConfig},
     frame::{FrameContext, FrameTiming, FrameUniform, FramesInFlight, frame_uniform_layout},
+    resource::{BufferHandle, ResourceRegistry, TextureHandle},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +30,8 @@ pub enum RhiError {
 
 pub struct Rhi {
     context: Context,
+    registry: ResourceRegistry,
+
     frames: FramesInFlight,
     frame_uniform_layout: wgpu::BindGroupLayout,
 }
@@ -45,6 +49,7 @@ impl Rhi {
         Ok((
             Self {
                 context,
+                registry: ResourceRegistry::default(),
                 frames,
                 frame_uniform_layout,
             },
@@ -55,7 +60,7 @@ impl Rhi {
     // --- frame lifecycle -------------------------------------------------------------------------
 
     #[tracing::instrument(skip_all)]
-    pub fn begin_frame(&mut self, timing: FrameTiming) -> FrameContext<'_> {
+    pub fn begin_frame(&self, timing: FrameTiming) -> FrameContext<'_> {
         let frame_index = self.frames.frame_index();
         let slot_index = self.frames.slot_index();
 
@@ -75,6 +80,54 @@ impl Rhi {
         FrameContext::new(self, frame_index, slot_index, timing)
     }
 
+    #[inline]
+    pub fn frame_uniform_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.frame_uniform_layout
+    }
+
+    // --- texture ---------------------------------------------------------------------------------
+
+    pub fn create_texture(&mut self, desc: &wgpu::TextureDescriptor) -> TextureHandle {
+        self.registry.create_texture(self.context.device(), desc)
+    }
+
+    #[inline]
+    pub fn texture_view(&self, handle: TextureHandle) -> Option<&wgpu::TextureView> {
+        self.registry.texture_view(handle)
+    }
+
+    pub fn replace_texture(&mut self, handle: TextureHandle, desc: &wgpu::TextureDescriptor) -> bool {
+        self.registry.replace_texture(self.context.device(), handle, desc)
+    }
+
+    pub fn destroy_texture(&mut self, handle: TextureHandle) -> bool {
+        self.registry.remove_texture(handle)
+    }
+
+    // --- buffer ----------------------------------------------------------------------------------
+
+    pub fn create_buffer(&mut self, desc: &wgpu::BufferDescriptor) -> BufferHandle {
+        self.registry.create_buffer(self.context.device(), desc)
+    }
+
+    pub fn create_buffer_init(&mut self, desc: &wgpu::util::BufferInitDescriptor) -> BufferHandle {
+        self.registry.create_buffer_init(self.context.device(), desc)
+    }
+
+    pub fn upload_buffer(&self, handle: BufferHandle, offset: u64, data: &[u8]) -> bool {
+        let Some(resource) = self.registry.buffer(handle) else {
+            return false;
+        };
+
+        self.context.queue().write_buffer(&resource.buffer, offset, data);
+
+        true
+    }
+
+    pub fn destroy_buffer(&mut self, handle: BufferHandle) -> bool {
+        self.registry.remove_buffer(handle)
+    }
+
     // --- accessors -------------------------------------------------------------------------------
 
     #[inline]
@@ -83,13 +136,13 @@ impl Rhi {
     }
 
     #[inline]
-    pub fn capabilities(&self) -> &Capabilities {
-        self.context.capabilities()
+    pub fn registry(&self) -> &ResourceRegistry {
+        &self.registry
     }
 
     #[inline]
-    pub fn frame_uniform_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.frame_uniform_layout
+    pub fn capabilities(&self) -> &Capabilities {
+        self.context.capabilities()
     }
 
     /// Clone of the instance, for imgui initialization only.

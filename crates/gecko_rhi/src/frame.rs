@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use crate::Rhi;
@@ -35,7 +36,7 @@ pub struct FrameSlot {
 
 pub struct FramesInFlight {
     slots: Vec<FrameSlot>,
-    frame_index: u64,
+    frame_index: Cell<u64>,
 }
 
 impl FramesInFlight {
@@ -69,17 +70,20 @@ impl FramesInFlight {
             })
             .collect();
 
-        Self { slots, frame_index: 0 }
+        Self {
+            slots,
+            frame_index: Cell::new(0),
+        }
     }
 
     #[inline]
     pub fn frame_index(&self) -> u64 {
-        self.frame_index
+        self.frame_index.get()
     }
 
     #[inline]
     pub fn slot_index(&self) -> usize {
-        (self.frame_index % self.slots.len() as u64) as usize
+        (self.frame_index.get() % self.slots.len() as u64) as usize
     }
 
     #[inline]
@@ -88,8 +92,8 @@ impl FramesInFlight {
     }
 
     #[inline]
-    pub(crate) fn advance(&mut self) {
-        self.frame_index += 1;
+    pub(crate) fn advance(&self) {
+        self.frame_index.set(self.frame_index.get() + 1);
     }
 }
 
@@ -104,12 +108,12 @@ pub struct FrameContext<'a> {
     pub slot_index: usize,
     pub timing: FrameTiming,
 
-    rhi: &'a mut Rhi,
+    rhi: &'a Rhi,
     command_buffers: Vec<wgpu::CommandBuffer>,
 }
 
 impl<'a> FrameContext<'a> {
-    pub(crate) fn new(rhi: &'a mut Rhi, frame_index: u64, slot_index: usize, timing: FrameTiming) -> Self {
+    pub(crate) fn new(rhi: &'a Rhi, frame_index: u64, slot_index: usize, timing: FrameTiming) -> Self {
         Self {
             frame_index,
             slot_index,

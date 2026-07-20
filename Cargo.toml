@@ -21,6 +21,7 @@ dear-imgui-wgpu = { git = "https://github.com/Latias94/dear-imgui-rs", rev = "f0
 dear-imgui-winit = { git = "https://github.com/Latias94/dear-imgui-rs", rev = "f0045c2353986c3fb0a9b1ad69b7ac3df783f7e3" }
 glam = "0.33.2"
 pollster = "1.0.1"
+slotmap = "1.1.1"
 thiserror = "2.0.19"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

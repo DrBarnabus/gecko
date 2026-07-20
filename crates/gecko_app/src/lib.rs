@@ -41,7 +41,7 @@ impl EngineState {
             )?,
         );
 
-        let (rhi, raw_surface) = Rhi::new(&ContextConfig::default(), window.clone())?;
+        let (mut rhi, raw_surface) = Rhi::new(&ContextConfig::default(), window.clone())?;
 
         let PhysicalSize { width, height } = window.inner_size();
         let surface = Surface::new(&rhi, raw_surface, width, height);
@@ -49,7 +49,7 @@ impl EngineState {
         let editor = Editor::new(&rhi, &surface, &window, log_buffer)?;
 
         let scene = Scene::new();
-        let scene_renderer = SceneRenderer::new(&rhi.device(), surface.format(), rhi.frame_uniform_layout());
+        let scene_renderer = SceneRenderer::new(&mut rhi, surface.format());
 
         tracing::info!(width, height, "initialized");
 
@@ -114,8 +114,8 @@ impl EngineState {
             let viewport = &self.editor.viewport;
             let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
             self.scene_renderer.render(
+                &self.rhi,
                 &mut encoder,
-                frame.queue(),
                 frame.frame_uniform_bind_group(),
                 &viewport.color_view,
                 &viewport.depth_view,

@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 bytemuck.workspace = true
 pollster.workspace = true
+slotmap.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 wgpu.workspace = true
