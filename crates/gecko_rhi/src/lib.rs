@@ -3,6 +3,8 @@ pub mod conventions;
 pub mod frame;
 pub mod resource;
 
+use std::num::NonZeroUsize;
+
 use crate::{
     context::{Capabilities, Context, ContextConfig},
     frame::{FrameContext, FrameTiming, FrameUniform, FramesInFlight, frame_uniform_layout},
@@ -33,6 +35,7 @@ pub struct Rhi {
     registry: ResourceRegistry,
 
     frames: FramesInFlight,
+    frames_in_flight: NonZeroUsize,
     frame_uniform_layout: wgpu::BindGroupLayout,
 }
 
@@ -50,7 +53,9 @@ impl Rhi {
             Self {
                 context,
                 registry: ResourceRegistry::default(),
+
                 frames,
+                frames_in_flight: config.frames_in_flight,
                 frame_uniform_layout,
             },
             raw_surface,
@@ -58,6 +63,11 @@ impl Rhi {
     }
 
     // --- frame lifecycle -------------------------------------------------------------------------
+
+    #[inline]
+    pub fn frames_in_flight(&self) -> NonZeroUsize {
+        self.frames_in_flight
+    }
 
     #[tracing::instrument(skip_all)]
     pub fn begin_frame(&self, timing: FrameTiming) -> FrameContext<'_> {

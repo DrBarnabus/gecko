@@ -75,7 +75,8 @@ impl Editor {
 
         let init_info = WgpuInitInfo::new(rhi.device(), rhi.queue(), surface.format())
             .with_instance(rhi.instance())
-            .with_adapter(rhi.adapter());
+            .with_adapter(rhi.adapter())
+            .with_frames_in_flight(rhi.frames_in_flight().get() as u32);
 
         let mut renderer = WgpuRenderer::new(init_info, &mut imgui)?;
         renderer.set_gamma_mode(GammaMode::Auto);
