@@ -2,6 +2,7 @@ pub mod context;
 pub mod conventions;
 pub mod frame;
 pub mod resource;
+pub mod target;
 
 use std::num::NonZeroUsize;
 
@@ -9,6 +10,7 @@ use crate::{
     context::{Capabilities, Context, ContextConfig},
     frame::{FrameContext, FrameTiming, FrameUniform, FramesInFlight, frame_uniform_layout},
     resource::{BufferHandle, ResourceRegistry, TextureHandle},
+    target::{RenderTarget, ResolvedTarget},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -111,6 +113,12 @@ impl Rhi {
 
     pub fn destroy_texture(&mut self, handle: TextureHandle) -> bool {
         self.registry.remove_texture(handle)
+    }
+
+    // --- render target ---------------------------------------------------------------------------
+
+    pub fn resolve_target(&self, target: &RenderTarget) -> Option<ResolvedTarget<'_>> {
+        self.registry.resolve_target(target)
     }
 
     // --- buffer ----------------------------------------------------------------------------------

@@ -1,6 +1,11 @@
 use slotmap::{SlotMap, new_key_type};
 use wgpu::util::DeviceExt;
 
+use crate::{
+    conventions::MAX_COLOR_ATTACHMENTS,
+    target::{RenderTarget, ResolvedTarget},
+};
+
 new_key_type! {
     pub struct TextureHandle;
     pub struct BufferHandle;
@@ -77,6 +82,28 @@ impl ResourceRegistry {
 
     pub(crate) fn remove_texture(&mut self, handle: TextureHandle) -> bool {
         self.textures.remove(handle).is_some()
+    }
+
+    // --- render target ---------------------------------------------------------------------------
+
+    pub fn resolve_target(&self, target: &RenderTarget) -> Option<ResolvedTarget<'_>> {
+        let mut colors = [None; MAX_COLOR_ATTACHMENTS];
+        for (i, color) in target.colors().enumerate() {
+            colors[i] = Some(self.texture_view(color.handle)?);
+        }
+
+        let depth = match target.depth {
+            Some(handle) => Some(self.texture_view(handle)?),
+            None => None,
+        };
+
+        Some(ResolvedTarget {
+            colors,
+            color_count: target.color_count(),
+            depth,
+            size: target.size,
+            sample_count: target.sample_count,
+        })
     }
 
     // --- buffer ----------------------------------------------------------------------------------

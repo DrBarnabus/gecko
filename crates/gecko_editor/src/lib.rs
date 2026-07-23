@@ -49,7 +49,7 @@ impl Drop for Editor {
 }
 
 impl Editor {
-    pub fn new(rhi: &Rhi, surface: &Surface, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
+    pub fn new(rhi: &mut Rhi, surface: &Surface, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
         let viewports_enabled = cfg!(feature = "multi-viewport")
             && cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
 
@@ -83,7 +83,7 @@ impl Editor {
 
         ui::theme::set_style(&mut imgui);
 
-        let viewport = Viewport::new(rhi.device(), &mut renderer, surface.format());
+        let viewport = Viewport::new(rhi, &mut renderer, surface.format());
 
         let mut editor = Self {
             imgui,
@@ -136,8 +136,8 @@ impl Editor {
         self.quit_requested
     }
 
-    pub fn begin_frame_maintenance(&mut self, rhi: &Rhi, format: wgpu::TextureFormat) {
-        self.viewport.apply_resize(rhi.device(), &mut self.renderer, format);
+    pub fn begin_frame_maintenance(&mut self, rhi: &mut Rhi) {
+        self.viewport.apply_resize(rhi, &mut self.renderer);
     }
 
     #[tracing::instrument(skip_all)]

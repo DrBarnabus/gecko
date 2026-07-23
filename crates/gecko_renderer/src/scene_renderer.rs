@@ -4,8 +4,9 @@ use encase::ShaderType;
 use gecko_core::math::{Mat4, Vec4};
 use gecko_rhi::{
     Rhi,
-    conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT},
+    conventions::{DEPTH_CLEAR, DEPTH_COMPARE, DEPTH_FORMAT, MAX_COLOR_ATTACHMENTS},
     resource::BufferHandle,
+    target::ResolvedTarget,
 };
 
 #[repr(C)]
@@ -48,10 +49,11 @@ pub struct SceneRenderer {
     uniform_bind_group: wgpu::BindGroup,
     uniform_alignment: u64,
     max_objects: usize,
+    color_formats: Vec<wgpu::TextureFormat>,
 }
 
 impl SceneRenderer {
-    pub fn new(rhi: &mut Rhi, format: wgpu::TextureFormat) -> Self {
+    pub fn new(rhi: &mut Rhi, color_formats: &[wgpu::TextureFormat]) -> Self {
         let device = rhi.device();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -85,6 +87,17 @@ impl SceneRenderer {
             immediate_size: 0,
         });
 
+        let color_targets: Vec<Option<wgpu::ColorTargetState>> = color_formats
+            .iter()
+            .map(|&format| {
+                Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })
+            })
+            .collect();
+
         let make_pipeline =
             |label: &str, topology: wgpu::PrimitiveTopology, cull: Option<wgpu::Face>, depth_write: bool| {
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -99,11 +112,7 @@ impl SceneRenderer {
                     fragment: Some(wgpu::FragmentState {
                         module: &shader,
                         entry_point: Some("fs_main"),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
+                        targets: &color_targets,
                         compilation_options: Default::default(),
                     }),
                     primitive: wgpu::PrimitiveState {
@@ -211,6 +220,7 @@ impl SceneRenderer {
             uniform_bind_group,
             uniform_alignment: alignment,
             max_objects,
+            color_formats: color_formats.to_vec(),
         }
     }
 
@@ -221,12 +231,19 @@ impl SceneRenderer {
         rhi: &Rhi,
         encoder: &mut wgpu::CommandEncoder,
         frame_uniform_bind_group: &wgpu::BindGroup,
-        color_view: &wgpu::TextureView,
-        depth_view: &wgpu::TextureView,
+        target: &ResolvedTarget<'_>,
         view_proj: Mat4,
         objects: &[(Mat4, [f32; 3])],
         show_grid: bool,
     ) {
+        assert_eq!(
+            target.color_count(),
+            self.color_formats.len(),
+            "resolved target has {} color attachments but the scene pipeline was built for {}",
+            target.color_count(),
+            self.color_formats.len(),
+        );
+
         let object_count = objects.len() + usize::from(show_grid);
         assert!(object_count <= self.max_objects, "raise max_objects");
 
@@ -264,24 +281,29 @@ impl SceneRenderer {
         let cube_vb = registry.buffer_ref(self.cube_vb).expect("cube_vb");
         let cube_ib = registry.buffer_ref(self.cube_ib).expect("cube_ib");
 
+        let color_attachments: [Option<wgpu::RenderPassColorAttachment>; MAX_COLOR_ATTACHMENTS] =
+            std::array::from_fn(|i| {
+                target.color(i).map(|view| wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.05,
+                            g: 0.06,
+                            b: 0.09,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })
+            });
+
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene_pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: color_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.05,
-                        g: 0.06,
-                        b: 0.09,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
+            color_attachments: &color_attachments[..target.color_count()],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: depth_view,
+                view: target.depth.expect("target has depth"),
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(DEPTH_CLEAR),
                     store: wgpu::StoreOp::Store,

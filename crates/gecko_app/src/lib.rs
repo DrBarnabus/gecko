@@ -46,10 +46,10 @@ impl EngineState {
         let PhysicalSize { width, height } = window.inner_size();
         let surface = Surface::new(&rhi, raw_surface, width, height);
 
-        let editor = Editor::new(&rhi, &surface, &window, log_buffer)?;
+        let editor = Editor::new(&mut rhi, &surface, &window, log_buffer)?;
 
         let scene = Scene::new();
-        let scene_renderer = SceneRenderer::new(&mut rhi, surface.format());
+        let scene_renderer = SceneRenderer::new(&mut rhi, &[surface.format()]);
 
         tracing::info!(width, height, "initialized");
 
@@ -88,7 +88,7 @@ impl EngineState {
             self.fps_frame_count = 0;
         }
 
-        self.editor.begin_frame_maintenance(&self.rhi, self.surface.format());
+        self.editor.begin_frame_maintenance(&mut self.rhi);
 
         self.scene.update(delta_time);
 
@@ -113,12 +113,15 @@ impl EngineState {
 
             let viewport = &self.editor.viewport;
             let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
+            let target = self
+                .rhi
+                .resolve_target(&viewport.target)
+                .expect("viewport target resolves");
             self.scene_renderer.render(
                 &self.rhi,
                 &mut encoder,
                 frame.frame_uniform_bind_group(),
-                &viewport.color_view,
-                &viewport.depth_view,
+                &target,
                 view_proj,
                 &self.scene.draw_list(),
                 self.scene.show_grid,
