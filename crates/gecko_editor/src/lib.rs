@@ -1,18 +1,17 @@
 pub mod ui;
-pub mod viewport;
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use dear_imgui_rs::{
-    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, StyleVar, Ui,
-    WindowClass,
+    Context, DockLayout, DockLayoutApply, DockLayoutError, DockNodeFlags, DockSplit, DockspaceTarget, Id, StyleVar,
+    TextureId, Ui, WindowClass,
 };
 use dear_imgui_wgpu::{GammaMode, WgpuInitInfo, WgpuRenderer};
 use dear_imgui_winit::{HiDpiMode, WinitPlatform};
 use gecko_core::diagnostics::LogBuffer;
 use gecko_renderer::surface::Surface;
-use gecko_rhi::Rhi;
+use gecko_rhi::{Rhi, target::RenderTargetRing};
 use gecko_runtime::Scene;
 use winit::{
     event::WindowEvent,
@@ -25,7 +24,42 @@ use dear_imgui_winit::multi_viewport as winit_mvp;
 #[cfg(feature = "multi-viewport")]
 pub use winit_mvp::set_event_loop_for_frame;
 
-use crate::{ui::console::Console, viewport::Viewport};
+use crate::ui::console::Console;
+
+pub struct GameImageRing {
+    texture_ids: Vec<TextureId>,
+    active: usize,
+    pub panel_size: (u32, u32),
+}
+
+impl GameImageRing {
+    pub fn register(renderer: &mut WgpuRenderer, slots: &[(&wgpu::Texture, &wgpu::TextureView)]) -> Self {
+        let texture_ids = slots
+            .iter()
+            .map(|&(texture, view)| renderer.register_external_texture(texture, view))
+            .collect();
+
+        Self {
+            texture_ids,
+            active: 0,
+            panel_size: (1, 1),
+        }
+    }
+
+    pub fn repoint_all(&self, renderer: &mut WgpuRenderer, views: &[&wgpu::TextureView]) {
+        for (&id, &view) in self.texture_ids.iter().zip(views) {
+            renderer.update_external_texture_view(id, view);
+        }
+    }
+
+    pub fn set_active(&mut self, slot: usize) {
+        self.active = slot;
+    }
+
+    pub fn active_id(&self) -> TextureId {
+        self.texture_ids[self.active]
+    }
+}
 
 pub struct Editor {
     pub imgui: Context,
@@ -34,7 +68,7 @@ pub struct Editor {
     viewports_enabled: bool,
 
     pub console: Console,
-    pub viewport: Viewport,
+    pub game_image_ring: GameImageRing,
 
     quit_requested: bool,
 }
@@ -49,7 +83,13 @@ impl Drop for Editor {
 }
 
 impl Editor {
-    pub fn new(rhi: &mut Rhi, surface: &Surface, window: &Arc<Window>, log_buffer: Arc<LogBuffer>) -> Result<Self> {
+    pub fn new(
+        rhi: &mut Rhi,
+        surface: &Surface,
+        window: &Arc<Window>,
+        log_buffer: Arc<LogBuffer>,
+        game_ring: &RenderTargetRing,
+    ) -> Result<Self> {
         let viewports_enabled = cfg!(feature = "multi-viewport")
             && cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux"));
 
@@ -83,7 +123,19 @@ impl Editor {
 
         ui::theme::set_style(&mut imgui);
 
-        let viewport = Viewport::new(rhi, &mut renderer, surface.format());
+        let game_image_ring = {
+            let slots: Vec<(&wgpu::Texture, &wgpu::TextureView)> = (0..game_ring.slot_count())
+                .map(|i| {
+                    let texture = rhi
+                        .registry()
+                        .texture(game_ring.presented_handle(i))
+                        .expect("game slot texture");
+                    (&texture.texture, &texture.view)
+                })
+                .collect();
+
+            GameImageRing::register(&mut renderer, &slots)
+        };
 
         let mut editor = Self {
             imgui,
@@ -92,7 +144,7 @@ impl Editor {
             viewports_enabled,
 
             console: Console::new(log_buffer),
-            viewport,
+            game_image_ring,
 
             quit_requested: false,
         };
@@ -136,8 +188,19 @@ impl Editor {
         self.quit_requested
     }
 
-    pub fn begin_frame_maintenance(&mut self, rhi: &mut Rhi) {
-        self.viewport.apply_resize(rhi, &mut self.renderer);
+    pub fn repoint_game_ring(&mut self, rhi: &Rhi, game_ring: &RenderTargetRing) {
+        let views: Vec<&wgpu::TextureView> = (0..game_ring.slot_count())
+            .map(|i| {
+                rhi.texture_view(game_ring.presented_handle(i))
+                    .expect("game slot texture view")
+            })
+            .collect();
+
+        self.game_image_ring.repoint_all(&mut self.renderer, &views);
+    }
+
+    pub fn set_active_game_slot(&mut self, slot: usize) {
+        self.game_image_ring.set_active(slot);
     }
 
     #[tracing::instrument(skip_all)]
@@ -150,9 +213,6 @@ impl Editor {
         framebuffer_height: u32,
     ) -> Result<()> {
         self.platform.prepare_frame(window, &mut self.imgui);
-
-        let viewport_texture_id = self.viewport.texture_id;
-        let mut viewport_desired_size = self.viewport.desired;
 
         let ui = self.imgui.frame();
 
@@ -181,9 +241,9 @@ impl Editor {
         let padding = ui.push_style_var(StyleVar::WindowPadding([0.0, 0.0]));
         ui.window("Game").build(|| {
             let [width, height] = ui.content_region_avail();
-            viewport_desired_size = (width.max(1.0) as u32, height.max(1.0) as u32);
+            self.game_image_ring.panel_size = (width.max(1.0) as u32, height.max(1.0) as u32);
 
-            ui.image(viewport_texture_id, [width.max(1.0), height.max(1.0)]);
+            ui.image(self.game_image_ring.active_id(), [width.max(1.0), height.max(1.0)]);
         });
         padding.pop();
 
@@ -198,8 +258,6 @@ impl Editor {
         if let Some(text) = copy_request {
             self.imgui.set_clipboard_text(text);
         }
-
-        self.viewport.desired = viewport_desired_size;
 
         Ok(())
     }

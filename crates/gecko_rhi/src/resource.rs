@@ -101,7 +101,7 @@ impl ResourceRegistry {
             colors,
             color_count: target.color_count(),
             depth,
-            size: target.size,
+            extent: target.extent,
             sample_count: target.sample_count,
         })
     }

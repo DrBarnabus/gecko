@@ -1,6 +1,7 @@
 use crate::{
     Rhi,
     conventions::{DEPTH_FORMAT, MAX_COLOR_ATTACHMENTS},
+    extent_of,
     resource::TextureHandle,
 };
 
@@ -36,7 +37,7 @@ pub struct RenderTarget {
     colors: [Option<ColorAttachment>; MAX_COLOR_ATTACHMENTS],
     color_count: usize,
     pub depth: Option<TextureHandle>,
-    pub size: wgpu::Extent3d,
+    pub extent: wgpu::Extent3d,
     pub sample_count: u32,
 }
 
@@ -44,7 +45,7 @@ impl RenderTarget {
     pub fn new(
         rhi: &mut Rhi,
         label: &str,
-        size: wgpu::Extent3d,
+        extent: wgpu::Extent3d,
         attachments: &[ColorSpec],
         with_depth: bool,
     ) -> RenderTarget {
@@ -70,7 +71,7 @@ impl RenderTarget {
             let usage = color.usage | wgpu::TextureUsages::RENDER_ATTACHMENT;
             let handle = rhi.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&format!("{label}_color_{i}")),
-                size,
+                size: extent,
                 mip_level_count: 1,
                 sample_count: SAMPLE_COUNT,
                 dimension: wgpu::TextureDimension::D2,
@@ -90,7 +91,7 @@ impl RenderTarget {
         let depth = if with_depth {
             Some(rhi.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&format!("{label}_depth")),
-                size,
+                size: extent,
                 mip_level_count: 1,
                 sample_count: SAMPLE_COUNT,
                 dimension: wgpu::TextureDimension::D2,
@@ -106,7 +107,7 @@ impl RenderTarget {
             colors,
             color_count: attachments.len(),
             depth,
-            size,
+            extent,
             sample_count: SAMPLE_COUNT,
         }
     }
@@ -114,13 +115,13 @@ impl RenderTarget {
     pub fn color_depth(
         rhi: &mut Rhi,
         label: &str,
-        size: wgpu::Extent3d,
+        extent: wgpu::Extent3d,
         color_format: wgpu::TextureFormat,
     ) -> RenderTarget {
         Self::new(
             rhi,
             label,
-            size,
+            extent,
             &[ColorSpec {
                 format: color_format,
                 role: AttachmentRole::Color,
@@ -150,13 +151,13 @@ impl RenderTarget {
             .1
     }
 
-    pub fn replace(&mut self, rhi: &mut Rhi, label: &str, size: wgpu::Extent3d) {
+    pub fn replace(&mut self, rhi: &mut Rhi, label: &str, extent: wgpu::Extent3d) {
         for (i, color) in self.colors[..self.color_count].iter().flatten().enumerate() {
             rhi.replace_texture(
                 color.handle,
                 &wgpu::TextureDescriptor {
                     label: Some(&format!("{label}_color_{i}")),
-                    size,
+                    size: extent,
                     mip_level_count: 1,
                     sample_count: SAMPLE_COUNT,
                     dimension: wgpu::TextureDimension::D2,
@@ -172,7 +173,7 @@ impl RenderTarget {
                 depth,
                 &wgpu::TextureDescriptor {
                     label: Some(&format!("{label}_depth")),
-                    size,
+                    size: extent,
                     mip_level_count: 1,
                     sample_count: SAMPLE_COUNT,
                     dimension: wgpu::TextureDimension::D2,
@@ -183,7 +184,7 @@ impl RenderTarget {
             );
         }
 
-        self.size = size;
+        self.extent = extent;
     }
 }
 
@@ -201,11 +202,73 @@ fn bytes_per_sample(formats: &[wgpu::TextureFormat]) -> u32 {
     total
 }
 
+pub struct RenderTargetRing {
+    slots: Vec<RenderTarget>,
+    size: (u32, u32),
+    desired: (u32, u32),
+}
+
+impl RenderTargetRing {
+    pub fn new(
+        rhi: &mut Rhi,
+        label: &str,
+        color_format: wgpu::TextureFormat,
+        size: (u32, u32),
+        slot_count: usize,
+    ) -> Self {
+        let extent = extent_of(size);
+        let slots = (0..slot_count)
+            .map(|i| RenderTarget::color_depth(rhi, &format!("{label}[{i}]"), extent, color_format))
+            .collect();
+
+        Self {
+            slots,
+            size,
+            desired: size,
+        }
+    }
+
+    pub fn slot(&self, i: usize) -> &RenderTarget {
+        &self.slots[i]
+    }
+
+    pub fn slot_count(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub fn presented_handle(&self, i: usize) -> TextureHandle {
+        self.slot(i).presented().handle
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        self.size
+    }
+
+    pub fn set_desired(&mut self, size: (u32, u32)) {
+        self.desired = size;
+    }
+
+    pub fn apply_resize(&mut self, rhi: &mut Rhi, label: &str) -> bool {
+        if self.desired == self.size || self.desired.0 == 0 || self.desired.1 == 0 {
+            return false;
+        }
+
+        let extent = extent_of(self.desired);
+        for (i, slot) in self.slots.iter_mut().enumerate() {
+            slot.replace(rhi, &format!("{label}[{i}]"), extent);
+        }
+
+        self.size = self.desired;
+
+        true
+    }
+}
+
 pub struct ResolvedTarget<'a> {
     pub(crate) colors: [Option<&'a wgpu::TextureView>; MAX_COLOR_ATTACHMENTS],
     pub(crate) color_count: usize,
     pub depth: Option<&'a wgpu::TextureView>,
-    pub size: wgpu::Extent3d,
+    pub extent: wgpu::Extent3d,
     pub sample_count: u32,
 }
 
@@ -241,7 +304,7 @@ mod tests {
             colors,
             color_count: attachments.len(),
             depth: None,
-            size: wgpu::Extent3d {
+            extent: wgpu::Extent3d {
                 width: 1,
                 height: 1,
                 depth_or_array_layers: 1,

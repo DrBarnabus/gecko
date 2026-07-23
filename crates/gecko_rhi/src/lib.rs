@@ -186,3 +186,11 @@ impl Rhi {
         self.context.queue().clone()
     }
 }
+
+pub fn extent_of(size: (u32, u32)) -> wgpu::Extent3d {
+    wgpu::Extent3d {
+        width: size.0,
+        height: size.1,
+        depth_or_array_layers: 1,
+    }
+}

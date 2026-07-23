@@ -7,7 +7,7 @@ use gecko_renderer::{
     scene_renderer::SceneRenderer,
     surface::{Frame, Surface},
 };
-use gecko_rhi::{Rhi, context::ContextConfig, frame::FrameTiming};
+use gecko_rhi::{Rhi, context::ContextConfig, frame::FrameTiming, target::RenderTargetRing};
 use gecko_runtime::Scene;
 use winit::{
     application::ApplicationHandler,
@@ -24,6 +24,7 @@ struct EngineState {
     editor: Editor,
     scene: Scene,
     scene_renderer: SceneRenderer,
+    game_ring: RenderTargetRing,
 
     start: Instant,
     last_frame: Instant,
@@ -46,7 +47,9 @@ impl EngineState {
         let PhysicalSize { width, height } = window.inner_size();
         let surface = Surface::new(&rhi, raw_surface, width, height);
 
-        let editor = Editor::new(&mut rhi, &surface, &window, log_buffer)?;
+        let slot_count = rhi.frames_in_flight().get();
+        let game_ring = RenderTargetRing::new(&mut rhi, "game", surface.format(), (1280, 720), slot_count);
+        let editor = Editor::new(&mut rhi, &surface, &window, log_buffer, &game_ring)?;
 
         let scene = Scene::new();
         let scene_renderer = SceneRenderer::new(&mut rhi, &[surface.format()]);
@@ -60,6 +63,7 @@ impl EngineState {
             editor,
             scene,
             scene_renderer,
+            game_ring,
 
             start: Instant::now(),
             last_frame: Instant::now(),
@@ -88,7 +92,10 @@ impl EngineState {
             self.fps_frame_count = 0;
         }
 
-        self.editor.begin_frame_maintenance(&mut self.rhi);
+        self.game_ring.set_desired(self.editor.game_image_ring.panel_size);
+        if self.game_ring.apply_resize(&mut self.rhi, "game") {
+            self.editor.repoint_game_ring(&self.rhi, &self.game_ring);
+        }
 
         self.scene.update(delta_time);
 
@@ -106,17 +113,21 @@ impl EngineState {
             delta_time,
         });
 
+        let slot = frame.slot_index;
+        self.editor.set_active_game_slot(slot);
+
         let mut encoder = frame.create_encoder("frame_encoder");
 
         {
             let _span = tracing::debug_span!("game_pass").entered();
 
-            let viewport = &self.editor.viewport;
-            let view_proj = self.scene.camera.proj(viewport.aspect()) * self.scene.camera.view();
+            let (width, height) = self.game_ring.size();
+            let aspect = width as f32 / height.max(1) as f32;
+            let view_proj = self.scene.camera.proj(aspect) * self.scene.camera.view();
             let target = self
                 .rhi
-                .resolve_target(&viewport.target)
-                .expect("viewport target resolves");
+                .resolve_target(self.game_ring.slot(slot))
+                .expect("game slot resolves");
             self.scene_renderer.render(
                 &self.rhi,
                 &mut encoder,
