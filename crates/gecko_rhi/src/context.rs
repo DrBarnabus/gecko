@@ -10,6 +10,8 @@ pub struct ContextConfig {
     pub power_preference: wgpu::PowerPreference,
     pub min_immediate_size: u32,
     pub min_bind_groups: u32,
+    pub min_color_attachments: u32,
+    pub min_color_attachment_bytes_per_sample: u32,
     pub frames_in_flight: NonZeroUsize,
 }
 
@@ -19,6 +21,8 @@ impl Default for ContextConfig {
             power_preference: wgpu::PowerPreference::HighPerformance,
             min_immediate_size: 128,
             min_bind_groups: 8,
+            min_color_attachments: 4,
+            min_color_attachment_bytes_per_sample: 32,
             frames_in_flight: NonZeroUsize::new(2).unwrap(),
         }
     }
@@ -29,6 +33,8 @@ pub struct Capabilities {
     pub limits: wgpu::Limits,
     pub max_immediate_size: u32,
     pub max_bind_groups: u32,
+    pub max_color_attachments: u32,
+    pub max_color_attachment_bytes_per_sample: u32,
     pub supports_bindless: bool,
 }
 
@@ -78,6 +84,22 @@ impl Context {
             });
         }
 
+        if adapter_limits.max_color_attachments < config.min_color_attachments {
+            return Err(RhiError::UnmetLimit {
+                name: "min_color_attachments",
+                required: config.min_color_attachments,
+                available: adapter_limits.max_color_attachments,
+            });
+        }
+
+        if adapter_limits.max_color_attachment_bytes_per_sample < config.min_color_attachment_bytes_per_sample {
+            return Err(RhiError::UnmetLimit {
+                name: "min_color_attachment_bytes_per_sample",
+                required: config.min_color_attachment_bytes_per_sample,
+                available: adapter_limits.max_color_attachment_bytes_per_sample,
+            });
+        }
+
         let mut required_features = wgpu::Features::empty();
 
         if adapter_supports_bindless {
@@ -99,12 +121,16 @@ impl Context {
             limits: device.limits(),
             max_immediate_size: adapter_limits.max_immediate_size,
             max_bind_groups: adapter_limits.max_bind_groups,
+            max_color_attachments: adapter_limits.max_color_attachments,
+            max_color_attachment_bytes_per_sample: adapter_limits.max_color_attachment_bytes_per_sample,
             supports_bindless: adapter_supports_bindless,
         };
 
         tracing::info!(
             max_immediate_size = capabilities.max_immediate_size,
             max_bind_groups = capabilities.max_bind_groups,
+            max_color_attachments = capabilities.max_color_attachments,
+            max_color_attachment_bytes_per_sample = capabilities.max_color_attachment_bytes_per_sample,
             supports_bindless = capabilities.supports_bindless,
             "aquired device"
         );
